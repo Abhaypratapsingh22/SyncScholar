@@ -1,0 +1,65 @@
+# ==========================================
+# SyncScholar Root .gitignore
+# Strict Git hygiene for SDG 4 EdTech Platform
+# ==========================================
+
+# Environment variables & secrets (NEVER commit secrets!)
+.env
+.env.*
+!.env.example
+*.env
+
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Python virtual environments & bytecode
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Build artifacts & distribution
+dist/
+dist-ssr/
+coverage/
+*.local
+
+# Ingestion Pipeline: Strictly exclude raw textbook PDFs
+# (Mandate: Zero Raw PDFs committed to git - offline pipeline only)
+ingestion/raw_pdfs/*.pdf
+ingestion/raw_pdfs/**/*.pdf
+*.pdf
+
+# Editor & OS artifacts
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs & temporary caches
+logs/
+*.log
+.eslintcache
+.cache/
+.temp/
+.tmp/

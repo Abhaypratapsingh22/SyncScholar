@@ -1,0 +1,29 @@
+{
+  "_id": "671aa1000000000000000001",
+  "text": "Conduction is the process by which heat is transferred from the hotter part of an object to the colder part without any actual movement of the particles. Materials that allow heat to pass through them easily are called conductors (e.g., iron, copper, aluminum). Materials that do not allow heat to pass through them easily are poor conductors or insulators (e.g., wood, plastic).",
+  "embedding": [
+    0.0125,
+    -0.0384,
+    0.0091,
+    0.0452,
+    -0.0178
+  ],
+  "metadata": {
+    "source_curriculum": "NCERT",
+    "grade_level": 7,
+    "subject": "Science",
+    "chapter_number": 4,
+    "chapter_title": "Heat",
+    "learning_objective_id": "SCI-07-HEAT-02",
+    "difficulty_tier": "foundational",
+    "page_number": 40,
+    "source_url": "https://ncert.nic.in/textbook/pdf/gesc104.pdf",
+    "prerequisites": [
+      {
+        "learning_objective_id": "SCI-06-TEMP-01",
+        "grade_level": 6,
+        "concept": "Hot and Cold Objects"
+      }
+    ]
+  }
+}

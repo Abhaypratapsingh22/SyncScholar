@@ -1,0 +1,6 @@
+# Client UI Components
+# Modular, accessible UI components:
+# - Common: ConnectivityBanner, Navbar, SkeletonLoader, EmptyStateCard
+# - Tutor: SocraticChatWindow, MessageBubble, CitationCard, PrerequisiteBanner
+# - Assessment: MicroQuizDrawer, FlashcardDeck, MasteryProgressBar
+# - Teacher: WeakSpotHeatmap, TopicErrorBar, StudentMasteryTable

@@ -1,0 +1,22 @@
+{
+  "name": "syncscholar-server",
+  "version": "0.1.0",
+  "description": "Backend API & RAG orchestration server for SyncScholar (SDG 4 EdTech)",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "syncscholar",
+    "rag",
+    "sdg4",
+    "education",
+    "offline-first",
+    "mongodb-atlas"
+  ],
+  "author": "SyncScholar Team",
+  "license": "MIT"
+}

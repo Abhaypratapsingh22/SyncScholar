@@ -1,0 +1,5 @@
+# Client Utilities
+# Pure helper functions:
+# - formatters.js: Citation badge label formatters, date/time formatters
+# - uuid.js: Client-side UUID generator for offline quiz attempt deduplication
+# - readability.js: Client-side text metrics and typography helpers

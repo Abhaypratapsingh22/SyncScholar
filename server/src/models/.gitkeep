@@ -1,0 +1,5 @@
+# Server Models
+# Mongoose schemas or MongoDB collection schemas for:
+# - curriculum_chunks (text, embedding vector, grade_level, subject, learning_objective_id, etc.)
+# - student_profiles (mastery scores, quiz attempts, current grade)
+# - users (students and teachers)

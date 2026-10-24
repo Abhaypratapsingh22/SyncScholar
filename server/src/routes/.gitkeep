@@ -1,0 +1,6 @@
+# Server Routes
+# API route declarations:
+# - authRoutes.js: Registration, login, token refresh
+# - tutorRoutes.js: Socratic RAG chat queries
+# - quizRoutes.js: Quiz generation, submission, and offline sync endpoint
+# - teacherRoutes.js: Classroom weak-spot heatmap and student mastery aggregations

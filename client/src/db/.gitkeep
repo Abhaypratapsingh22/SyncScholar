@@ -1,0 +1,5 @@
+# Client Offline Database (Dexie.js / IndexedDB)
+# Local schema definitions and stores:
+# - pendingQuizSyncQueue: Outbox for quiz submissions made while offline
+# - cachedPassages: Local store of frequently referenced textbook chapters/summaries
+# - localFlashcards: Offline study deck storage

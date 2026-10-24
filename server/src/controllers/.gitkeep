@@ -1,0 +1,2 @@
+# Server Controllers
+# Express HTTP request and response handlers for auth, tutoring/RAG chat, quizzes, and teacher analytics.

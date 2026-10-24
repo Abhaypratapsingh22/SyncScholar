@@ -1,0 +1,5 @@
+# Server Utilities
+# Shared helper functions:
+# - readability.js: Flesch-Kincaid grade level scoring
+# - mastery.js: Exponential Moving Average (EMA) computation
+# - response.js: Standardized API response formatters

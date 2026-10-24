@@ -1,0 +1,2 @@
+# Server Middlewares
+# JWT authentication, role verification (student vs teacher), rate limiting, and centralized error handling.

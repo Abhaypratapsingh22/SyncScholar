@@ -1,0 +1,3 @@
+# Strictly ignore all PDF files placed in this directory for local parsing
+*.pdf
+**/*.pdf

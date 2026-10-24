@@ -1,0 +1,6 @@
+# Client Pages / Views
+# Top-level view containers:
+# - StudentDashboard: Active learning interface with doubt chat, flashcards, and quick quizzes
+# - TeacherDashboard: Classroom analytics, weak-spot heatmap, and curriculum breakdown
+# - Login / Register: Lightweight student and teacher authentication
+# - OfflineLibrary: Cached textbook summaries and offline flashcard review

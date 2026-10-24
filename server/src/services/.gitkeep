@@ -1,0 +1,6 @@
+# Server Services
+# Core domain and AI logic:
+# - ragService.js: Atlas vector search pre-filtering, prerequisite fallback, context assembly
+# - tutorService.js: Socratic prompt orchestration with Gemini / LLM, Flesch-Kincaid readability
+# - assessmentService.js: Formative quiz generation (structured JSON) & EMA mastery calculations
+# - syncService.js: Idempotent offline quiz batch synchronization

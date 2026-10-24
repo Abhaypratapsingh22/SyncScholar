@@ -1,0 +1,3 @@
+# Client Public Assets
+# Static icons, SVG graphics, PWA web manifest (manifest.json), and offline favicon assets.
+# Note: Low-bandwidth empathy — prefer lightweight inline SVGs and optimized assets.

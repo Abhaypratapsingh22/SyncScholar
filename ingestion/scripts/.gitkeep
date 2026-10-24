@@ -1,0 +1,5 @@
+# Ingestion Scripts
+# Python scripts for one-time offline PDF processing:
+# - parse_textbook.py: Extracts text chunks and page numbers using PyMuPDF (fitz)
+# - generate_embeddings.py: Generates vector embeddings for extracted chunks
+# - index_to_mongodb.py: Uploads curriculum chunks and vector embeddings to MongoDB Atlas

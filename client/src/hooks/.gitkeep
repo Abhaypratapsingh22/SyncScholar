@@ -1,0 +1,6 @@
+# Client Custom React Hooks
+# Reusable stateful hooks:
+# - useOnlineStatus: Tracks navigator.onLine and network transitions
+# - useOfflineSync: Monitors IndexedDB pending queue and coordinates auto-sync
+# - useMastery: Fetches and calculates real-time mastery scores
+# - useAuth: Authentication context and user role state

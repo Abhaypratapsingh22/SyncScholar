@@ -1,0 +1,2 @@
+# Server Configuration
+# Contains database connection (MongoDB Atlas), AI provider clients, and environment config.

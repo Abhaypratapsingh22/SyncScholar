@@ -1,0 +1,6 @@
+# Client API & Network Services
+# Thin API client abstractions for backend communication:
+# - api.js: Base fetch / axios wrapper handling auth headers and offline errors
+# - tutorApi.js: Query Socratic tutor backend
+# - quizApi.js: Fetch generated quizzes and post submissions
+# - syncApi.js: Batch push offline pending quiz attempts

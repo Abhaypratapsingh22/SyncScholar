@@ -1,0 +1,3 @@
+# Ingestion Raw PDFs Directory
+# Place downloaded NCERT / OpenStax textbook PDFs here for local offline extraction.
+# Rule: This directory's PDF contents are strictly git-ignored and must NEVER be committed.
