@@ -14,6 +14,11 @@ import './models/CurriculumChunk.js';
 import './models/User.js';
 import './models/QuizAttempt.js';
 
+// Route imports
+import authRoutes from './routes/authRoutes.js';
+import studentRoutes from './routes/studentRoutes.js';
+import teacherRoutes from './routes/teacherRoutes.js';
+
 const app = express();
 
 // ============================================================================
@@ -87,6 +92,13 @@ app.get('/api/health', (req, res) => {
   const httpStatus = isHealthy ? 200 : 503;
   return res.status(httpStatus).json(responsePayload);
 });
+
+// ============================================================================
+// Application API Routes
+// ============================================================================
+app.use('/api/auth', authRoutes);
+app.use('/api/student', studentRoutes);
+app.use('/api/teacher', teacherRoutes);
 
 // ============================================================================
 // Fallback 404 & Global Error Handling

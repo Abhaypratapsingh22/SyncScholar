@@ -6,6 +6,7 @@
  */
 
 import mongoose from 'mongoose';
+import bcrypt from 'bcryptjs';
 
 const { Schema } = mongoose;
 
@@ -73,7 +74,6 @@ const userSchema = new Schema(
       type: String,
       trim: true,
       lowercase: true,
-      sparse: true,
       required: [
         function () {
           return !this.roll_number;
@@ -87,7 +87,6 @@ const userSchema = new Schema(
       type: String,
       trim: true,
       uppercase: true,
-      sparse: true,
       required: [
         function () {
           return !this.email;
@@ -121,6 +120,11 @@ const userSchema = new Schema(
       max: [12, 'Maximum grade is 12'],
       default: null,
     },
+    // Assigned grades for teachers (e.g., [6, 7, 8]) for classroom overview and heatmap filtering
+    assigned_grades: {
+      type: [Number],
+      default: [],
+    },
     preferred_language: {
       type: String,
       default: 'en',
@@ -137,6 +141,16 @@ const userSchema = new Schema(
     collection: 'users',
   }
 );
+
+/**
+ * Compares an incoming plain-text password with the stored bcrypt hash.
+ * 
+ * @param {string} enteredPassword - Candidate plain-text password from login request
+ * @returns {Promise<boolean>} True if password matches stored hash, false otherwise
+ */
+userSchema.methods.matchPassword = async function (enteredPassword) {
+  return await bcrypt.compare(enteredPassword, this.password_hash);
+};
 
 // ============================================================================
 // Compound Indexes
