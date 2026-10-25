@@ -1,0 +1,41 @@
+{
+  "index_name": "vector_index",
+  "target_database": "edubridge",
+  "target_collection": "curriculum_chunks",
+  "verification_instructions": [
+    "1. Log in to MongoDB Atlas: https://cloud.mongodb.com/",
+    "2. Under Database Deployments, click on your Cluster -> 'Atlas Search' tab (or 'Search' in left navigation).",
+    "3. Click 'Create Search Index' and choose 'Atlas Vector Search' (JSON Editor).",
+    "4. Select Database 'edubridge' (or 'syncscholar') and Collection 'curriculum_chunks'.",
+    "5. Set Index Name to exactly: vector_index",
+    "6. Paste the 'definition' object below into the editor.",
+    "7. Click 'Next' and then 'Create Vector Search Index'.",
+    "8. Status verification: Watch the Status column transition from 'Initializing' / 'Initial Sync' to 'READY' (green checkmark). Once READY, $vectorSearch pipeline queries are active."
+  ],
+  "definition": {
+    "fields": [
+      {
+        "type": "vector",
+        "path": "embedding",
+        "numDimensions": 768,
+        "similarity": "cosine"
+      },
+      {
+        "type": "filter",
+        "path": "metadata.grade_level"
+      },
+      {
+        "type": "filter",
+        "path": "metadata.subject"
+      },
+      {
+        "type": "filter",
+        "path": "metadata.learning_objective_id"
+      },
+      {
+        "type": "filter",
+        "path": "metadata.difficulty_tier"
+      }
+    ]
+  }
+}
