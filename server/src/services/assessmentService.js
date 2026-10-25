@@ -33,9 +33,9 @@ import { retrieveRelevantChunks } from './vectorSearchService.js';
 // Initialize singleton Google Gen AI client with validated API key
 const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
 
-// Primary LLM model specified by prompt mandate, with robust fallback
-const PRIMARY_ASSESSMENT_MODEL = 'gemini-2.5-flash';
-const FALLBACK_ASSESSMENT_MODEL = process.env.LLM_MODEL || 'gemini-3.8-flash';
+// Primary LLM model: gemini-3.8-flash (with robust fallback for gemini-1.5-flash)
+const PRIMARY_ASSESSMENT_MODEL = process.env.LLM_MODEL || 'gemini-3.8-flash';
+const FALLBACK_ASSESSMENT_MODEL = 'gemini-1.5-flash';
 
 // EMA smoothing factor defined in the pedagogical specification
 export const EMA_ALPHA = 0.4;
@@ -133,34 +133,57 @@ async function callGeminiAssessment(systemInstruction, userPrompt) {
   let lastError = null;
 
   for (const model of modelsToTry) {
-    try {
-      const response = await ai.models.generateContent({
-        model: model,
-        contents: userPrompt,
-        config: {
-          systemInstruction: systemInstruction,
-          responseMimeType: 'application/json',
-          temperature: 0.2, // Low temperature for high factual adherence
-        },
-      });
+    let attempt = 0;
+    const maxRetries = 3;
+    let delay = 1000;
 
-      const responseText = response.text?.trim();
-      if (!responseText) {
-        throw new Error(`Received empty response text from model "${model}".`);
+    while (attempt < maxRetries) {
+      try {
+        const response = await ai.models.generateContent({
+          model: model,
+          contents: userPrompt,
+          config: {
+            systemInstruction: systemInstruction,
+            responseMimeType: 'application/json',
+            temperature: 0.2, // Low temperature for high factual adherence
+          },
+        });
+
+        const responseText = response.text?.trim();
+        if (!responseText) {
+          throw new Error(`Received empty response text from model "${model}".`);
+        }
+
+        // Sanitize markdown fences if present
+        const cleanedJson = responseText
+          .replace(/^```json\s*/i, '')
+          .replace(/^```\s*/i, '')
+          .replace(/```$/i, '')
+          .trim();
+
+        const parsed = JSON.parse(cleanedJson);
+        return parsed;
+      } catch (err) {
+        attempt++;
+        lastError = err;
+        const isTransient =
+          err?.status === 429 ||
+          err?.message?.includes('fetch failed') ||
+          err?.message?.includes('RESOURCE_EXHAUSTED') ||
+          err?.message?.includes('ENOTFOUND') ||
+          err?.message?.includes('ETIMEDOUT');
+
+        if (isTransient && attempt < maxRetries) {
+          console.warn(
+            `[assessmentService] Transient error calling "${model}": ${err.message}. Retrying in ${delay}ms (Attempt ${attempt}/${maxRetries})...`
+          );
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          delay *= 2;
+        } else {
+          console.warn(`[assessmentService] Model "${model}" failed assessment generation: ${err.message}.`);
+          break;
+        }
       }
-
-      // Sanitize markdown fences if present
-      const cleanedJson = responseText
-        .replace(/^```json\s*/i, '')
-        .replace(/^```\s*/i, '')
-        .replace(/```$/i, '')
-        .trim();
-
-      const parsed = JSON.parse(cleanedJson);
-      return parsed;
-    } catch (err) {
-      lastError = err;
-      console.warn(`[assessmentService] Model "${model}" failed assessment generation: ${err.message}. Trying next candidate...`);
     }
   }
 

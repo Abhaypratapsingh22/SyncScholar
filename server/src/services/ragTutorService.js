@@ -19,9 +19,9 @@ import { retrieveRelevantChunks } from './vectorSearchService.js';
 // Initialize singleton Google Gen AI client
 const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
 
-// Default LLM model: gemini-3.8-flash (with fallback support for gemini-2.5-flash)
+// Primary LLM model: gemini-3.8-flash (with fallback support for gemini-1.5-flash)
 const PRIMARY_LLM_MODEL = process.env.LLM_MODEL || 'gemini-3.8-flash';
-const FALLBACK_LLM_MODEL = 'gemini-2.5-flash';
+const FALLBACK_LLM_MODEL = 'gemini-1.5-flash';
 
 /**
  * Builds the strict system prompt for Socratic tutoring and curriculum grounding.
@@ -119,33 +119,56 @@ async function callGeminiTutor(systemInstruction, userPrompt) {
   let lastError = null;
 
   for (const model of modelsToTry) {
-    try {
-      const response = await ai.models.generateContent({
-        model: model,
-        contents: userPrompt,
-        config: {
-          systemInstruction: systemInstruction,
-          responseMimeType: 'application/json',
-          temperature: 0.2, // Low temperature for factual curriculum grounding
-        },
-      });
+    let attempt = 0;
+    const maxRetries = 3;
+    let delay = 1000;
 
-      const responseText = response.text?.trim();
-      if (!responseText) {
-        throw new Error('Received empty response text from Gemini LLM.');
+    while (attempt < maxRetries) {
+      try {
+        const response = await ai.models.generateContent({
+          model: model,
+          contents: userPrompt,
+          config: {
+            systemInstruction: systemInstruction,
+            responseMimeType: 'application/json',
+            temperature: 0.2, // Low temperature for factual curriculum grounding
+          },
+        });
+
+        const responseText = response.text?.trim();
+        if (!responseText) {
+          throw new Error('Received empty response text from Gemini LLM.');
+        }
+
+        // Sanitize potential markdown fences
+        const cleanedJson = responseText
+          .replace(/^```json\s*/i, '')
+          .replace(/^```\s*/i, '')
+          .replace(/```$/i, '')
+          .trim();
+
+        return JSON.parse(cleanedJson);
+      } catch (err) {
+        attempt++;
+        lastError = err;
+        const isTransient =
+          err?.status === 429 ||
+          err?.message?.includes('fetch failed') ||
+          err?.message?.includes('RESOURCE_EXHAUSTED') ||
+          err?.message?.includes('ENOTFOUND') ||
+          err?.message?.includes('ETIMEDOUT');
+
+        if (isTransient && attempt < maxRetries) {
+          console.warn(
+            `[ragTutorService] Transient error calling "${model}": ${err.message}. Retrying in ${delay}ms (Attempt ${attempt}/${maxRetries})...`
+          );
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          delay *= 2;
+        } else {
+          console.warn(`[ragTutorService] Model "${model}" failed: ${err.message}.`);
+          break;
+        }
       }
-
-      // Sanitize potential markdown fences
-      const cleanedJson = responseText
-        .replace(/^```json\s*/i, '')
-        .replace(/^```\s*/i, '')
-        .replace(/```$/i, '')
-        .trim();
-
-      return JSON.parse(cleanedJson);
-    } catch (err) {
-      lastError = err;
-      console.warn(`[ragTutorService] Model "${model}" failed: ${err.message}. Trying next candidate...`);
     }
   }
 
