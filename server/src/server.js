@@ -18,6 +18,7 @@ import './models/QuizAttempt.js';
 import authRoutes from './routes/authRoutes.js';
 import studentRoutes from './routes/studentRoutes.js';
 import teacherRoutes from './routes/teacherRoutes.js';
+import tutorRoutes from './routes/tutorRoutes.js';
 
 const app = express();
 
@@ -99,6 +100,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/student', studentRoutes);
 app.use('/api/teacher', teacherRoutes);
+app.use('/api/tutor', tutorRoutes);
 
 // ============================================================================
 // Fallback 404 & Global Error Handling
