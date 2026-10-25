@@ -111,7 +111,7 @@ app.use('/api/assessments', assessmentRoutes);
 // 404 Route Handler
 app.use((req, res) => {
   res.status(404).json({
-    error: 'Not Found',
+    success: false,
     message: `Cannot ${req.method} ${req.path}`,
   });
 });
@@ -119,9 +119,13 @@ app.use((req, res) => {
 // Centralized Error Handler Middleware
 app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
   console.error('Unhandled Server Error:', err);
-  res.status(err.status || 500).json({
-    error: 'Internal Server Error',
-    message: env.NODE_ENV === 'production' ? 'An unexpected error occurred.' : err.message,
+  const status = typeof err.status === 'number' && err.status >= 400 && err.status < 600 ? err.status : 500;
+  const isClientError = status < 500;
+  const isDev = env.NODE_ENV !== 'production';
+
+  res.status(status).json({
+    success: false,
+    message: isClientError || isDev ? err.message || 'An error occurred.' : 'An unexpected error occurred.',
   });
 });
 

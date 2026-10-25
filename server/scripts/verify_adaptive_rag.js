@@ -286,6 +286,7 @@ async function runVerification() {
       console.log('\n🎉 ALL 4 ADAPTIVE RAG VERIFICATION TESTS PASSED SUCCESSFULLY!');
     } else {
       console.error('\n⚠️ Some verification checks failed.');
+      process.exitCode = 1;
     }
   } finally {
     server.close();
@@ -293,4 +294,7 @@ async function runVerification() {
   }
 }
 
-runVerification().catch(console.error);
+runVerification().catch((err) => {
+  console.error('Unhandled verification error:', err);
+  process.exitCode = 1;
+});

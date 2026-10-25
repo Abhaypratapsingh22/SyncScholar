@@ -67,7 +67,6 @@ const quizAttemptSchema = new Schema(
     client_attempt_id: {
       type: String,
       required: [true, 'client_attempt_id UUID is required for idempotent offline synchronization'],
-      unique: true,
       trim: true,
       index: true,
     },
@@ -144,7 +143,10 @@ const quizAttemptSchema = new Schema(
 // Compound Indexes
 // ============================================================================
 
-// 1. Fetch student history for a specific objective ordered by recency
+// 1. Ensure idempotent attempts per student
+quizAttemptSchema.index({ student_id: 1, client_attempt_id: 1 }, { unique: true });
+
+// 2. Fetch student history for a specific objective ordered by recency
 quizAttemptSchema.index({ student_id: 1, learning_objective_id: 1, createdAt: -1 });
 
 // 2. Aggregate teacher heatmap analytics by learning objective across classrooms

@@ -159,13 +159,13 @@ userSchema.methods.matchPassword = async function (enteredPassword) {
 // 1. Ensure roll numbers are unique per school for students
 userSchema.index(
   { school_id: 1, roll_number: 1 },
-  { unique: true, sparse: true, partialFilterExpression: { roll_number: { $type: 'string' } } }
+  { unique: true, partialFilterExpression: { roll_number: { $type: 'string' } } }
 );
 
 // 2. Ensure emails are unique when present
 userSchema.index(
   { email: 1 },
-  { unique: true, sparse: true, partialFilterExpression: { email: { $type: 'string' } } }
+  { unique: true, partialFilterExpression: { email: { $type: 'string' } } }
 );
 
 // 3. Optimize queries for school teacher/student listings

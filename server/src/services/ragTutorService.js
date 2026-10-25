@@ -19,9 +19,9 @@ import { retrieveRelevantChunks } from './vectorSearchService.js';
 // Initialize singleton Google Gen AI client
 const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
 
-// Primary LLM model: gemini-3.8-flash (with fallback support for gemini-1.5-flash)
+// Primary LLM model with configurable fallback model (defaults to gemini-flash-latest)
 const PRIMARY_LLM_MODEL = process.env.LLM_MODEL || 'gemini-3.8-flash';
-const FALLBACK_LLM_MODEL = 'gemini-1.5-flash';
+const FALLBACK_LLM_MODEL = process.env.LLM_FALLBACK_MODEL || 'gemini-flash-latest';
 
 /**
  * Builds the strict system prompt for Socratic tutoring and curriculum grounding.
@@ -116,9 +116,11 @@ Synthesize a Socratic, grounded response following your system instructions. Res
  */
 async function callGeminiTutor(systemInstruction, userPrompt) {
   const modelsToTry = [PRIMARY_LLM_MODEL, FALLBACK_LLM_MODEL];
+  let primaryError = null;
   let lastError = null;
 
-  for (const model of modelsToTry) {
+  for (let i = 0; i < modelsToTry.length; i++) {
+    const model = modelsToTry[i];
     let attempt = 0;
     const maxRetries = 3;
     let delay = 1000;
@@ -147,14 +149,33 @@ async function callGeminiTutor(systemInstruction, userPrompt) {
           .replace(/```$/i, '')
           .trim();
 
-        return JSON.parse(cleanedJson);
+        const parsed = JSON.parse(cleanedJson);
+        if (
+          !parsed ||
+          typeof parsed !== 'object' ||
+          Array.isArray(parsed) ||
+          typeof parsed.answer !== 'string' ||
+          !parsed.answer.trim()
+        ) {
+          throw new Error('LLM response JSON is missing a non-empty string "answer" field.');
+        }
+
+        return parsed;
       } catch (err) {
         attempt++;
+        if (i === 0) {
+          primaryError = err;
+        }
         lastError = err;
         const isTransient =
           err?.status === 429 ||
+          err?.status === 503 ||
+          err?.message?.includes('429') ||
+          err?.message?.includes('503') ||
           err?.message?.includes('fetch failed') ||
           err?.message?.includes('RESOURCE_EXHAUSTED') ||
+          err?.message?.includes('UNAVAILABLE') ||
+          err?.message?.includes('high demand') ||
           err?.message?.includes('ENOTFOUND') ||
           err?.message?.includes('ETIMEDOUT');
 
@@ -172,7 +193,7 @@ async function callGeminiTutor(systemInstruction, userPrompt) {
     }
   }
 
-  throw lastError || new Error('All Gemini LLM models failed to synthesize tutor response.');
+  throw primaryError || lastError || new Error('All Gemini LLM models failed to synthesize tutor response.');
 }
 
 /**
@@ -278,12 +299,8 @@ export async function askTutor({
 
   const synthesis = await callGeminiTutor(systemInstruction, userPrompt);
 
-  // Guarantee citations fallback to verified retrieved chunk metadata if LLM misses any
-  const fallbackCitations = extractCitationsFromChunks(retrievalResult.chunks);
-  const finalCitations =
-    Array.isArray(synthesis.citations) && synthesis.citations.length > 0
-      ? synthesis.citations
-      : fallbackCitations;
+  // Guarantee citations are derived strictly from verified retrieved chunk metadata
+  const finalCitations = extractCitationsFromChunks(retrievalResult.chunks);
 
   const primaryLoId =
     synthesis.detected_learning_objective_id ||

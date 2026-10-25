@@ -35,6 +35,20 @@ export async function handleAskTutor(req, res) {
       });
     }
 
+    if (subject !== undefined && subject !== null && typeof subject !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'The "subject" field must be a string if provided.',
+      });
+    }
+
+    if (learningObjectiveId !== undefined && learningObjectiveId !== null && typeof learningObjectiveId !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'The "learningObjectiveId" field must be a string if provided.',
+      });
+    }
+
     // 2. Delegate to RAG Tutor Service
     const result = await askTutor({
       studentId: student._id,

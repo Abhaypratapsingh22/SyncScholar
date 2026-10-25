@@ -19,7 +19,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
-import pdf from 'pdf-parse';
+import pdf from 'pdf-parse/lib/pdf-parse.js';
 import { MongoClient } from 'mongodb';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
@@ -167,7 +167,20 @@ async function extractPagesFromPdf(filePath, pageLimitCount = null) {
         return '';
       }
       const textContent = await pageData.getTextContent();
-      const text = textContent.items.map((item) => item.str).join(' ');
+      let text = '';
+      let lastY = null;
+      for (const item of textContent.items) {
+        if (!item || typeof item.str !== 'string') continue;
+        const currentY = item.transform?.[5];
+        if (lastY === null) {
+          text += item.str;
+        } else if (currentY !== lastY) {
+          text += '\n' + item.str;
+        } else {
+          text += ' ' + item.str;
+        }
+        lastY = currentY;
+      }
       pages.push({ pageNumber, text });
       return text;
     }
@@ -357,6 +370,11 @@ async function runIngestion() {
         process.stdout.write(`   [${i + 1}/${chunksForFile.length}] Embedding ${chunk.chunk_id} (p. ${chunk.metadata.page_number})... `);
 
         const embedding = await generateEmbeddingWithRetry(embeddingModel, chunk.text);
+        if (!Array.isArray(embedding) || embedding.length !== 768) {
+          throw new Error(
+            `Invalid embedding generated for chunk "${chunk.chunk_id}": expected array of length 768, received ${Array.isArray(embedding) ? embedding.length : typeof embedding}`
+          );
+        }
         process.stdout.write('✅ 768-dim\n');
 
         const document = {

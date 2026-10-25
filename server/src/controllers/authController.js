@@ -49,6 +49,13 @@ export async function register(req, res) {
       });
     }
 
+    if (!role || typeof role !== 'string' || !role.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Role is required and must be a string ('student' or 'teacher').",
+      });
+    }
+
     const normalizedRole = role.toLowerCase().trim();
     if (!['student', 'teacher'].includes(normalizedRole)) {
       return res.status(400).json({
@@ -57,19 +64,34 @@ export async function register(req, res) {
       });
     }
 
+    if (email !== undefined && email !== null && (typeof email !== 'string' || !email.trim())) {
+      return res.status(400).json({
+        success: false,
+        message: 'email must be a valid non-empty string when provided.',
+      });
+    }
+
+    if (roll_number !== undefined && roll_number !== null && (typeof roll_number !== 'string' || !roll_number.trim())) {
+      return res.status(400).json({
+        success: false,
+        message: 'roll_number must be a valid non-empty string when provided.',
+      });
+    }
+
     // 2. Role-specific validation
     let parsedCurrentGrade = null;
     let parsedAssignedGrades = [];
 
     if (normalizedRole === 'student') {
-      if (current_grade === undefined || current_grade === null || isNaN(Number(current_grade))) {
+      const numGrade = Number(current_grade);
+      if (current_grade === undefined || current_grade === null || !Number.isInteger(numGrade)) {
         return res.status(400).json({
           success: false,
-          message: 'current_grade (1-12) is required for student registration.',
+          message: 'current_grade must be an integer between 1 and 12.',
         });
       }
 
-      parsedCurrentGrade = Number(current_grade);
+      parsedCurrentGrade = numGrade;
       if (parsedCurrentGrade < 1 || parsedCurrentGrade > 12) {
         return res.status(400).json({
           success: false,
@@ -174,6 +196,12 @@ export async function register(req, res) {
     });
   } catch (error) {
     console.error('Registration Error:', error);
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: 'An account with this email or roll number already exists.',
+      });
+    }
     return res.status(500).json({
       success: false,
       message: 'Failed to complete registration due to an internal server error.',
@@ -194,6 +222,34 @@ export async function login(req, res) {
       return res.status(400).json({
         success: false,
         message: 'Password is required to log in.',
+      });
+    }
+
+    if (identifier !== undefined && identifier !== null && typeof identifier !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'identifier must be a string if provided.',
+      });
+    }
+
+    if (email !== undefined && email !== null && typeof email !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'email must be a string if provided.',
+      });
+    }
+
+    if (roll_number !== undefined && roll_number !== null && typeof roll_number !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'roll_number must be a string if provided.',
+      });
+    }
+
+    if (school_id !== undefined && school_id !== null && typeof school_id !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'school_id must be a string if provided.',
       });
     }
 
@@ -229,7 +285,7 @@ export async function login(req, res) {
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid credentials. User not found.',
+        message: 'Invalid credentials.',
       });
     }
 
@@ -238,7 +294,7 @@ export async function login(req, res) {
     if (!isPasswordValid) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid credentials. Incorrect password.',
+        message: 'Invalid credentials.',
       });
     }
 

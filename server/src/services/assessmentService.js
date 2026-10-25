@@ -22,6 +22,7 @@
  *    - Atomically processes queued offline attempts with partial-failure tolerance.
  */
 
+import mongoose from 'mongoose';
 import { GoogleGenAI } from '@google/genai';
 import { env } from '../config/env.js';
 import CurriculumChunk from '../models/CurriculumChunk.js';
@@ -33,9 +34,9 @@ import { retrieveRelevantChunks } from './vectorSearchService.js';
 // Initialize singleton Google Gen AI client with validated API key
 const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
 
-// Primary LLM model: gemini-3.8-flash (with robust fallback for gemini-1.5-flash)
+// Primary assessment model with configurable fallback model (defaults to gemini-flash-latest)
 const PRIMARY_ASSESSMENT_MODEL = process.env.LLM_MODEL || 'gemini-3.8-flash';
-const FALLBACK_ASSESSMENT_MODEL = 'gemini-1.5-flash';
+const FALLBACK_ASSESSMENT_MODEL = process.env.LLM_FALLBACK_MODEL || 'gemini-flash-latest';
 
 // EMA smoothing factor defined in the pedagogical specification
 export const EMA_ALPHA = 0.4;
@@ -130,9 +131,11 @@ Generate 3 Diagnostic MCQs and 3 Study Flashcards grounded STRICTLY in these pas
  */
 async function callGeminiAssessment(systemInstruction, userPrompt) {
   const modelsToTry = [PRIMARY_ASSESSMENT_MODEL, FALLBACK_ASSESSMENT_MODEL];
+  let primaryError = null;
   let lastError = null;
 
-  for (const model of modelsToTry) {
+  for (let i = 0; i < modelsToTry.length; i++) {
+    const model = modelsToTry[i];
     let attempt = 0;
     const maxRetries = 3;
     let delay = 1000;
@@ -165,11 +168,19 @@ async function callGeminiAssessment(systemInstruction, userPrompt) {
         return parsed;
       } catch (err) {
         attempt++;
+        if (i === 0) {
+          primaryError = err;
+        }
         lastError = err;
         const isTransient =
           err?.status === 429 ||
+          err?.status === 503 ||
+          err?.message?.includes('429') ||
+          err?.message?.includes('503') ||
           err?.message?.includes('fetch failed') ||
           err?.message?.includes('RESOURCE_EXHAUSTED') ||
+          err?.message?.includes('UNAVAILABLE') ||
+          err?.message?.includes('high demand') ||
           err?.message?.includes('ENOTFOUND') ||
           err?.message?.includes('ETIMEDOUT');
 
@@ -187,7 +198,7 @@ async function callGeminiAssessment(systemInstruction, userPrompt) {
     }
   }
 
-  throw lastError || new Error('All candidate models failed to generate structured assessment.');
+  throw primaryError || lastError || new Error('All candidate models failed to generate structured assessment.');
 }
 
 /**
@@ -279,10 +290,11 @@ export async function fetchAssessmentChunks({
 
   // 1. Direct match on learning_objective_id
   if (learningObjectiveId) {
+    const escapedLoId = String(learningObjectiveId).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     chunks = await CurriculumChunk.find({
       'metadata.grade_level': studentGrade,
       'metadata.subject': normalizedSubject,
-      'metadata.learning_objective_id': new RegExp(`^${learningObjectiveId}$`, 'i'),
+      'metadata.learning_objective_id': new RegExp(`^${escapedLoId}$`, 'i'),
     })
       .limit(4)
       .lean();
@@ -479,7 +491,10 @@ export async function recordQuizAttempt({
   }
 
   // 1. IDEMPOTENCY CHECK: Return existing record if already processed
-  const existingAttempt = await QuizAttempt.findOne({ client_attempt_id: clientAttemptId });
+  const existingAttempt = await QuizAttempt.findOne({
+    student_id: studentId,
+    client_attempt_id: clientAttemptId,
+  });
   if (existingAttempt) {
     const student = await User.findById(studentId).lean();
     const existingMastery = student?.concept_mastery?.find(
@@ -544,10 +559,12 @@ export async function recordQuizAttempt({
   );
 
   let previousMastery = DEFAULT_BASELINE_MASTERY;
+  let previousStatus = 'progressing';
   let attemptsCount = 0;
 
   if (masteryIndex >= 0) {
     previousMastery = student.concept_mastery[masteryIndex].mastery_score;
+    previousStatus = student.concept_mastery[masteryIndex].status || 'progressing';
     attemptsCount = student.concept_mastery[masteryIndex].attempts_count || 0;
   }
 
@@ -574,21 +591,64 @@ export async function recordQuizAttempt({
     student.concept_mastery.push(updatedMasteryRecord);
   }
 
-  await student.save();
+  // 6. Persist QuizAttempt and Student atomically with transaction support
+  let quizAttemptDoc;
+  let session = null;
 
-  // 6. Persist QuizAttempt with Client UUID for Idempotency
-  const quizAttemptDoc = await QuizAttempt.create({
-    client_attempt_id: clientAttemptId,
-    student_id: student._id,
-    learning_objective_id: learningObjectiveId.trim(),
-    subject: normalizedSubject,
-    grade_level: effectiveGrade,
-    questions: evaluatedQuestions,
-    score: score,
-    max_score: maxScore,
-    incorrect_question_tags: incorrectTags,
-    synced_from_offline: Boolean(syncedFromOffline),
-  });
+  try {
+    session = await mongoose.startSession();
+    session.startTransaction();
+
+    await student.save({ session });
+    const [createdDoc] = await QuizAttempt.create(
+      [
+        {
+          client_attempt_id: clientAttemptId,
+          student_id: student._id,
+          learning_objective_id: learningObjectiveId.trim(),
+          subject: normalizedSubject,
+          grade_level: effectiveGrade,
+          questions: evaluatedQuestions,
+          score: score,
+          max_score: maxScore,
+          incorrect_question_tags: incorrectTags,
+          synced_from_offline: Boolean(syncedFromOffline),
+        },
+      ],
+      { session }
+    );
+    quizAttemptDoc = createdDoc;
+
+    await session.commitTransaction();
+  } catch (txErr) {
+    if (session) {
+      await session.abortTransaction();
+    }
+    // Handle concurrent duplicate-key error (code 11000) for compound index (student_id, client_attempt_id)
+    if (txErr.code === 11000) {
+      const duplicateAttempt = await QuizAttempt.findOne({
+        student_id: studentId,
+        client_attempt_id: clientAttemptId,
+      });
+      if (duplicateAttempt) {
+        const freshStudent = await User.findById(studentId).lean();
+        const freshMastery = freshStudent?.concept_mastery?.find(
+          (m) => m.learning_objective_id?.toUpperCase() === learningObjectiveId.toUpperCase()
+        );
+        return {
+          idempotent: true,
+          message: 'Quiz attempt was already recorded. Returning previous result without re-scoring.',
+          attempt: duplicateAttempt,
+          concept_mastery: freshMastery || null,
+        };
+      }
+    }
+    throw txErr;
+  } finally {
+    if (session) {
+      await session.endSession();
+    }
+  }
 
   return {
     idempotent: false,
@@ -600,7 +660,7 @@ export async function recordQuizAttempt({
       new_mastery: emaResult.newMastery,
       status: emaResult.status,
       alpha: emaResult.alpha,
-      status_flipped: emaResult.status !== (masteryIndex >= 0 ? student.concept_mastery[masteryIndex]?.status : 'progressing'),
+      status_flipped: emaResult.status !== previousStatus,
     },
     concept_mastery: updatedMasteryRecord,
     incorrect_question_tags: incorrectTags,
@@ -621,16 +681,29 @@ export async function syncBatchQuizAttempts({ studentId, attempts }) {
     throw new Error('attempts must be an array of quiz submissions.');
   }
 
+  const MAX_BATCH_SIZE = 50;
+  if (attempts.length > MAX_BATCH_SIZE) {
+    throw new Error(`Batch size exceeds maximum limit of ${MAX_BATCH_SIZE} attempts.`);
+  }
+
   const results = [];
   let syncedCount = 0;
   let alreadySyncedCount = 0;
   let failedCount = 0;
 
   for (const item of attempts) {
+    const clientId = item && typeof item === 'object'
+      ? (item.client_attempt_id || item.clientAttemptId || 'unknown')
+      : 'unknown';
+
     try {
+      if (!item || typeof item !== 'object') {
+        throw new Error('Each attempt in the batch must be a valid non-null object.');
+      }
+
       const outcome = await recordQuizAttempt({
         studentId,
-        clientAttemptId: item.client_attempt_id || item.clientAttemptId,
+        clientAttemptId: clientId,
         learningObjectiveId: item.learning_objective_id || item.learningObjectiveId,
         subject: item.subject,
         gradeLevel: item.grade_level || item.gradeLevel,
@@ -641,7 +714,7 @@ export async function syncBatchQuizAttempts({ studentId, attempts }) {
       if (outcome.idempotent) {
         alreadySyncedCount += 1;
         results.push({
-          client_attempt_id: item.client_attempt_id,
+          client_attempt_id: clientId,
           status: 'already_synced',
           message: outcome.message,
           attempt_id: outcome.attempt?._id,
@@ -649,7 +722,7 @@ export async function syncBatchQuizAttempts({ studentId, attempts }) {
       } else {
         syncedCount += 1;
         results.push({
-          client_attempt_id: item.client_attempt_id,
+          client_attempt_id: clientId,
           status: 'synced',
           score: outcome.attempt?.score,
           max_score: outcome.attempt?.max_score,
@@ -660,7 +733,7 @@ export async function syncBatchQuizAttempts({ studentId, attempts }) {
     } catch (err) {
       failedCount += 1;
       results.push({
-        client_attempt_id: item.client_attempt_id || 'unknown',
+        client_attempt_id: clientId,
         status: 'failed',
         error: err.message,
       });
