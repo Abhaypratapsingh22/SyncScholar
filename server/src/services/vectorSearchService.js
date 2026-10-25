@@ -19,7 +19,9 @@ const EMBEDDING_DIMENSIONS = 768;
 const ATLAS_SEARCH_INDEX = 'vector_index';
 const NUM_CANDIDATES = 40;
 const SEARCH_LIMIT = 4;
-const MIN_RELEVANCE_THRESHOLD = 0.60; // Cosine similarity cutoff for syllabus grounding
+// Atlas Vector Search normalizes cosine similarity to (1 + cos) / 2.
+// Unrelated passages score ~0.70-0.74, while aligned curriculum queries score >0.80.
+const MIN_RELEVANCE_THRESHOLD = 0.78;
 
 /**
  * Generates 768-dimensional float embedding for a query with exponential backoff on HTTP 429.

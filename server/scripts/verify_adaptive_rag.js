@@ -46,7 +46,7 @@ async function setupTestStudents() {
         },
       ],
     },
-    { upsert: true, new: true }
+    { upsert: true, returnDocument: 'after' }
   );
 
   // Student B: Low Mastery (35% on Heat Conduction - Needs Remediation)
@@ -71,7 +71,7 @@ async function setupTestStudents() {
         },
       ],
     },
-    { upsert: true, new: true }
+    { upsert: true, returnDocument: 'after' }
   );
 
   const highMasteryToken = jwt.sign(
