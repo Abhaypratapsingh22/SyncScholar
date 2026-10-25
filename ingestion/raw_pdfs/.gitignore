@@ -1,3 +1,9 @@
-# Strictly ignore all PDF files placed in this directory for local parsing
+# Strictly ignore all PDF files and raw media placed in this directory for local parsing
 *.pdf
 **/*.pdf
+*.jpg
+*.jpeg
+*.png
+**/*.jpg
+**/*.jpeg
+**/*.png
