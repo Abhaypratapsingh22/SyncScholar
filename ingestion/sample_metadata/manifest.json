@@ -1,0 +1,96 @@
+{
+  "curriculum_version": "NCERT-2024-NEP2020",
+  "default_source_curriculum": "NCERT",
+  "files": [
+    {
+      "file_path": "Ncert_class_9_part1/iemh101.pdf",
+      "source_curriculum": "NCERT",
+      "grade_level": 9,
+      "subject": "Mathematics",
+      "chapter_number": 1,
+      "chapter_title": "Orienting Yourself: The Use of Coordinates",
+      "learning_objective_prefix": "MATH-09-COORD",
+      "source_url": "https://ncert.nic.in/textbook/pdf/iemh101.pdf"
+    },
+    {
+      "file_path": "Ncert_class_9_part1/iemh102.pdf",
+      "source_curriculum": "NCERT",
+      "grade_level": 9,
+      "subject": "Mathematics",
+      "chapter_number": 2,
+      "chapter_title": "Introduction to Linear Polynomials",
+      "learning_objective_prefix": "MATH-09-POLY",
+      "source_url": "https://ncert.nic.in/textbook/pdf/iemh102.pdf"
+    },
+    {
+      "file_path": "Ncert_class_9_part1/iemh103.pdf",
+      "source_curriculum": "NCERT",
+      "grade_level": 9,
+      "subject": "Mathematics",
+      "chapter_number": 3,
+      "chapter_title": "The World of Numbers",
+      "learning_objective_prefix": "MATH-09-NUM",
+      "source_url": "https://ncert.nic.in/textbook/pdf/iemh103.pdf"
+    },
+    {
+      "file_path": "Ncert_class_9_part1/iemh104.pdf",
+      "source_curriculum": "NCERT",
+      "grade_level": 9,
+      "subject": "Mathematics",
+      "chapter_number": 4,
+      "chapter_title": "Exploring Algebraic Identities",
+      "learning_objective_prefix": "MATH-09-ALG",
+      "source_url": "https://ncert.nic.in/textbook/pdf/iemh104.pdf"
+    },
+    {
+      "file_path": "Ncert_class_9_part1/iemh105.pdf",
+      "source_curriculum": "NCERT",
+      "grade_level": 9,
+      "subject": "Mathematics",
+      "chapter_number": 5,
+      "chapter_title": "I'm Up and Down, and Round and Round",
+      "learning_objective_prefix": "MATH-09-CIRC",
+      "source_url": "https://ncert.nic.in/textbook/pdf/iemh105.pdf"
+    },
+    {
+      "file_path": "Ncert_class_9_part1/iemh106.pdf",
+      "source_curriculum": "NCERT",
+      "grade_level": 9,
+      "subject": "Mathematics",
+      "chapter_number": 6,
+      "chapter_title": "Measuring Space: Perimeter and Area",
+      "learning_objective_prefix": "MATH-09-AREA",
+      "source_url": "https://ncert.nic.in/textbook/pdf/iemh106.pdf"
+    },
+    {
+      "file_path": "Ncert_class_9_part1/iemh107.pdf",
+      "source_curriculum": "NCERT",
+      "grade_level": 9,
+      "subject": "Mathematics",
+      "chapter_number": 7,
+      "chapter_title": "The Mathematics of Maybe: Introduction to Probability",
+      "learning_objective_prefix": "MATH-09-PROB",
+      "source_url": "https://ncert.nic.in/textbook/pdf/iemh107.pdf"
+    },
+    {
+      "file_path": "Ncert_class_9_part1/iemh108.pdf",
+      "source_curriculum": "NCERT",
+      "grade_level": 9,
+      "subject": "Mathematics",
+      "chapter_number": 8,
+      "chapter_title": "Predicting What Comes Next: Exploring Sequences and Progressions",
+      "learning_objective_prefix": "MATH-09-SEQ",
+      "source_url": "https://ncert.nic.in/textbook/pdf/iemh108.pdf"
+    },
+    {
+      "file_path": "gesc104.pdf",
+      "source_curriculum": "NCERT",
+      "grade_level": 7,
+      "subject": "Science",
+      "chapter_number": 4,
+      "chapter_title": "Heat",
+      "learning_objective_prefix": "SCI-07-HEAT",
+      "source_url": "https://ncert.nic.in/textbook/pdf/gesc104.pdf"
+    }
+  ]
+}

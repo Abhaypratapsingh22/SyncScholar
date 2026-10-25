@@ -1,0 +1,29 @@
+{
+  "name": "syncscholar-ingestion",
+  "version": "1.0.0",
+  "description": "Standalone offline curriculum ingestion and embedding pipeline for SyncScholar (SDG 4 EdTech)",
+  "main": "scripts/ingest_curriculum.js",
+  "type": "module",
+  "scripts": {
+    "seed": "node scripts/seed_sample_chunks.js",
+    "ingest": "node scripts/ingest_curriculum.js",
+    "dry-run": "node scripts/ingest_curriculum.js --dry-run",
+    "verify": "node scripts/verify_curriculum_chunks.js"
+  },
+  "keywords": [
+    "syncscholar",
+    "rag",
+    "curriculum-ingestion",
+    "pdf-chunking",
+    "embeddings",
+    "mongodb-atlas"
+  ],
+  "author": "SyncScholar Team",
+  "license": "MIT",
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "dotenv": "^16.4.7",
+    "mongodb": "^6.13.0",
+    "pdf-parse": "^1.1.1"
+  }
+}
