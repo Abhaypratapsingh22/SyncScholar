@@ -9,11 +9,12 @@
  * 4. Prerequisite Foundation Mode badge when bridging earlier grade concepts
  * 5. Expandable NCERT / OpenStax Source Citation Cards with page and external links
  * 6. Low-bandwidth empathy: Dexie.js offline caching, loading skeleton, and error retries
+ * 7. Clear offline state communication: pauses live RAG generation while highlighting cached decks
  */
 
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api.js';
-import { cacheTutorThread, getCachedTutorThreads } from '../db/indexedDb.js';
+import { cacheTutorHistory, getCachedTutorHistory } from '../db/offlineDb.js';
 import { EmptyState } from './EmptyState.jsx';
 import {
   Send,
@@ -27,6 +28,9 @@ import {
   Layers,
   CheckCircle,
   RotateCcw,
+  WifiOff,
+  ArrowRight,
+  BookMarked,
 } from 'lucide-react';
 
 const SUGGESTED_QUESTIONS = [
@@ -47,7 +51,7 @@ const SUGGESTED_QUESTIONS = [
   },
 ];
 
-export function TutorView({ student, syncState }) {
+export function TutorView({ student, syncState, onSelectTab }) {
   const [subject, setSubject] = useState('Science');
   const [question, setQuestion] = useState('');
   const [loading, setLoading] = useState(false);
@@ -56,11 +60,14 @@ export function TutorView({ student, syncState }) {
   const [expandedCitations, setExpandedCitations] = useState({});
   const chatEndRef = useRef(null);
 
+  const isOnline = syncState?.isOnline ?? true;
+
   // Load cached messages from IndexedDB for offline persistence
   useEffect(() => {
     async function loadHistory() {
       try {
-        const cached = await getCachedTutorThreads();
+        const studentId = student?.id || student?._id || 'guest';
+        const cached = await getCachedTutorHistory(studentId, 15);
         if (cached && cached.length > 0) {
           // Format into message objects
           const initialMessages = [];
@@ -83,13 +90,15 @@ export function TutorView({ student, syncState }) {
             });
           });
           setMessages(initialMessages);
+        } else {
+          setMessages([]);
         }
       } catch (err) {
         console.warn('Could not load cached tutor messages:', err);
       }
     }
     loadHistory();
-  }, []);
+  }, [student]);
 
   // Auto-scroll chat to latest response
   useEffect(() => {
@@ -104,28 +113,35 @@ export function TutorView({ student, syncState }) {
     }));
   };
 
-  const handleAsk = async (queryText = null, loId = null) => {
-    const textToAsk = (queryText || question).trim();
+  const handleAsk = async (prefilledText = null) => {
+    const textToAsk = (prefilledText || question).trim();
     if (!textToAsk || loading) return;
 
+    if (!isOnline) {
+      setErrorMessage(
+        'Live Socratic RAG tutoring requires internet connection. Please review cached discussions below or practice offline quizzes and flashcards.'
+      );
+      return;
+    }
+
     setErrorMessage(null);
-    const studentMsg = {
-      id: `msg-${Date.now()}-q`,
+    setLoading(true);
+
+    // Add student query to active thread immediately
+    const userMsg = {
+      id: `msg-${Date.now()}-u`,
       role: 'student',
       content: textToAsk,
       subject,
       timestamp: new Date().toISOString(),
     };
-
-    setMessages((prev) => [...prev, studentMsg]);
-    if (!queryText) setQuestion('');
-    setLoading(true);
+    setMessages((prev) => [...prev, userMsg]);
+    setQuestion('');
 
     try {
       const response = await api.askTutor({
         question: textToAsk,
         subject,
-        learningObjectiveId: loId || null,
       });
 
       if (response?.success && response?.data) {
@@ -144,7 +160,7 @@ export function TutorView({ student, syncState }) {
         setMessages((prev) => [...prev, tutorMsg]);
 
         // Cache in Dexie for offline reading
-        await cacheTutorThread({
+        await cacheTutorHistory({
           student_id: student?.id || 'guest',
           subject,
           question: textToAsk,
@@ -159,7 +175,7 @@ export function TutorView({ student, syncState }) {
     } catch (err) {
       console.error('Tutor ask error:', err);
       let userFriendlyError = err.message || 'Failed to connect to tutor service.';
-      if (err.isOffline || !syncState.isOnline) {
+      if (err.isOffline || !isOnline) {
         userFriendlyError = 'You are offline. Showing cached answers from your local storage.';
       }
       setErrorMessage(userFriendlyError);
@@ -189,183 +205,184 @@ export function TutorView({ student, syncState }) {
         </div>
 
         <div className="flex items-center gap-2 text-xs text-slate-700">
-          <span className="w-2 h-2 rounded-full bg-emerald-500" />
+          <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-amber-500'}`} />
           <span>Curriculum Grade {student?.current_grade || 7} Grounded</span>
         </div>
       </div>
+
+      {/* Prominent Offline Guard & Classroom Redirection Banner */}
+      {!isOnline && (
+        <div className="mb-5 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-amber-100 rounded-lg text-amber-800 flex-shrink-0 mt-0.5">
+              <WifiOff className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-bold text-sm tracking-tight">Offline Mode — Live AI Answering Paused</h3>
+              <p className="text-xs text-amber-800 mt-0.5">
+                New doubt generation requires internet. You can still review past conversations and textbook citations below, or study cached materials offline.
+              </p>
+            </div>
+          </div>
+          {onSelectTab && (
+            <button
+              type="button"
+              onClick={() => onSelectTab('assessment')}
+              className="btn-touch px-3.5 py-1.5 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white rounded-lg shadow-sm flex items-center gap-1.5 whitespace-nowrap self-stretch sm:self-auto justify-center"
+            >
+              <BookMarked className="w-3.5 h-3.5" />
+              <span>Practice Offline Decks</span>
+              <ArrowRight className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Suggested Topic Starter Chips (Quick 1-tap Doubts) */}
       {messages.length === 0 && (
         <div className="mb-6">
           <p className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-            <span>Try asking a textbook question:</span>
+            <Sparkles className="w-3.5 h-3.5 text-brand-600" />
+            <span>Classroom Starter Doubts (Tap to Ask)</span>
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-            {SUGGESTED_QUESTIONS.map((q, idx) => (
+            {SUGGESTED_QUESTIONS.map((s, idx) => (
               <button
                 key={idx}
                 type="button"
-                onClick={() => {
-                  setSubject(q.subject);
-                  handleAsk(q.text, q.loId);
-                }}
-                className="btn-touch p-3 text-left bg-white hover:bg-brand-50 border border-slate-200 hover:border-brand-300 rounded-xl transition-all group"
+                disabled={!isOnline}
+                onClick={() => handleAsk(s.text)}
+                className={`btn-touch p-3 text-left bg-white border border-slate-200 rounded-xl transition-all shadow-xs ${
+                  isOnline
+                    ? 'hover:border-brand-500 hover:bg-brand-50/30'
+                    : 'opacity-60 cursor-not-allowed bg-slate-50'
+                }`}
               >
-                <div className="flex items-start gap-2">
-                  <HelpCircle className="w-4 h-4 text-brand-600 mt-0.5 flex-shrink-0 group-hover:scale-110 transition-transform" />
-                  <span className="text-xs font-medium text-slate-800 leading-snug">{q.text}</span>
-                </div>
+                <span className="text-xs font-semibold text-brand-700 block mb-1">
+                  {s.subject} • {s.loId}
+                </span>
+                <span className="text-xs text-slate-800 line-clamp-2">{s.text}</span>
               </button>
             ))}
           </div>
         </div>
       )}
 
-      {/* Chat Thread Messages */}
-      <div className="space-y-4 mb-6">
-        {messages.length === 0 && !loading && (
+      {/* Chat Thread Container */}
+      <div className="classroom-card p-4 sm:p-6 mb-4 min-h-[360px] max-h-[560px] overflow-y-auto space-y-4">
+        {messages.length === 0 ? (
           <EmptyState
-            title="Socratic Curriculum Tutor Ready"
-            description="Type a question or homework doubt. SyncScholar guides you step-by-step using verified NCERT / OpenStax textbooks without giving away direct answers."
             iconType="books"
+            title="Socratic Curriculum Doubt Tutor"
+            description="Ask any question from your NCERT or OpenStax textbook. The tutor guides you step-by-step with analogies and citations without giving away test answers."
+            onAction={isOnline ? () => handleAsk(SUGGESTED_QUESTIONS[0].text) : null}
+            actionText={isOnline ? 'Try: Why do metal spoons feel colder?' : null}
           />
-        )}
-
-        {messages.map((msg, index) => (
-          <div key={msg.id || index} className="animate-fadeIn">
-            {msg.role === 'student' ? (
-              /* Student Question Bubble */
-              <div className="flex justify-end">
-                <div className="max-w-[85%] sm:max-w-[75%] bg-brand-700 text-white p-4 rounded-2xl rounded-tr-sm shadow-sm">
-                  <div className="flex items-center justify-between text-[11px] text-brand-200 mb-1">
-                    <span className="font-semibold">You ({msg.subject || 'Student'})</span>
-                  </div>
-                  <p className="text-sm sm:text-base leading-relaxed font-normal">{msg.content}</p>
-                </div>
-              </div>
-            ) : (
-              /* AI Socratic Tutor Response Bubble */
-              <div className="flex justify-start">
-                <div className="max-w-[95%] sm:max-w-[90%] classroom-card p-5 border-l-4 border-l-brand-600">
-                  {/* Header with Role and Foundation Badge */}
-                  <div className="flex flex-wrap items-center justify-between gap-2 mb-3 pb-2 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center font-bold text-xs">
-                        AI
-                      </div>
-                      <span className="text-xs font-bold text-slate-900">Socratic Tutor</span>
+        ) : (
+          messages.map((msg, idx) => {
+            if (msg.role === 'student') {
+              return (
+                <div key={msg.id || idx} className="flex justify-end">
+                  <div className="max-w-[85%] sm:max-w-[75%] bg-brand-600 text-white rounded-2xl rounded-tr-xs px-4 py-3 shadow-sm">
+                    <p className="text-sm font-medium leading-relaxed">{msg.content}</p>
+                    <div className="mt-1 text-[10px] text-brand-100 text-right">
+                      {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                     </div>
+                  </div>
+                </div>
+              );
+            }
 
-                    {/* Subtle Prerequisite Foundation Mode Badge (Mandated by Prompt) */}
+            // Tutor Response Card
+            return (
+              <div key={msg.id || idx} className="flex flex-col gap-3 max-w-[95%] sm:max-w-[88%]">
+                <div className="bg-white border border-slate-200 rounded-2xl rounded-tl-xs p-4 sm:p-5 shadow-xs space-y-3">
+                  {/* Socratic Anti-Cheating & Prerequisite Badges */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-brand-100 text-brand-800 rounded-md">
+                      Socratic Tutor
+                    </span>
+
                     {msg.remediation_mode_active && (
-                      <div
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 border border-amber-200 text-amber-900 rounded-full text-xs font-medium"
-                        title="Mastery < 50%: Adaptive retrieval included foundational concepts from earlier grades"
-                      >
-                        <Layers className="w-3.5 h-3.5 text-amber-600" />
-                        <span>🌱 Prerequisite Foundation Mode Active</span>
-                      </div>
+                      <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-900 rounded-md flex items-center gap-1 border border-amber-300">
+                        <Layers className="w-3 h-3 text-amber-700" />
+                        Prerequisite Mode (Bridging Foundational Concept)
+                      </span>
                     )}
 
                     {msg.out_of_syllabus && (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-full text-xs font-medium">
-                        <AlertCircle className="w-3 h-3 text-rose-600" />
-                        Curriculum Gated
+                      <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 rounded-md">
+                        Curriculum Boundary
                       </span>
                     )}
                   </div>
 
-                  {/* Main Grounded Answer Text */}
-                  <div className="text-sm sm:text-base text-slate-800 leading-relaxed space-y-2 whitespace-pre-line font-normal">
-                    {msg.content}
+                  {/* Socratic Explanation Body */}
+                  <div className="text-sm text-slate-900 leading-relaxed space-y-2">
+                    {msg.content.split('\n\n').map((paragraph, pIdx) => (
+                      <p key={pIdx}>{paragraph}</p>
+                    ))}
                   </div>
 
-                  {/* Socratic Guiding Hint Callout Box (Mandated by Prompt) */}
+                  {/* Socratic Guiding Hint Box */}
                   {msg.socratic_follow_up && (
-                    <div className="mt-4 p-4 bg-sky-50 border-l-4 border-l-sky-500 rounded-r-xl text-sky-950">
-                      <div className="flex items-center gap-1.5 font-bold text-xs uppercase tracking-wider text-sky-900 mb-1.5">
-                        <Sparkles className="w-4 h-4 text-sky-600" />
-                        <span>Socratic Guiding Clue & Next Step</span>
+                    <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-xl">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-900 mb-1">
+                        <HelpCircle className="w-4 h-4 text-indigo-600" />
+                        <span>Socratic Reflection Hint</span>
                       </div>
-                      <p className="text-sm leading-relaxed font-medium">{msg.socratic_follow_up}</p>
+                      <p className="text-xs text-indigo-950 font-medium leading-normal">
+                        {msg.socratic_follow_up}
+                      </p>
                     </div>
                   )}
 
-                  {/* Expandable NCERT / OpenStax Source Citation Cards (Mandated by Prompt) */}
+                  {/* Expandable NCERT / OpenStax Textbook Citations */}
                   {msg.citations && msg.citations.length > 0 && (
-                    <div className="mt-4 pt-3 border-t border-slate-100">
-                      <div className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <div className="pt-2 border-t border-slate-100 space-y-2">
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1">
                         <BookOpen className="w-3.5 h-3.5 text-brand-600" />
-                        <span>Verified Textbook Sources ({msg.citations.length})</span>
-                      </div>
+                        <span>Curriculum Source Citations ({msg.citations.length})</span>
+                      </p>
 
-                      <div className="space-y-2">
-                        {msg.citations.map((citation, citIdx) => {
-                          const isExpanded = expandedCitations[`${index}-${citIdx}`];
+                      <div className="space-y-1.5">
+                        {msg.citations.map((citation, cIdx) => {
+                          const isExpanded = expandedCitations[`${idx}-${cIdx}`];
                           return (
                             <div
-                              key={citIdx}
-                              className="border border-slate-200 rounded-lg p-2.5 bg-slate-50 text-xs transition-colors hover:bg-slate-100/70"
+                              key={cIdx}
+                              className="border border-slate-200 rounded-lg overflow-hidden text-xs bg-slate-50/50"
                             >
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-semibold text-slate-900">
-                                    {citation.chapter_title || 'General Curriculum'}
-                                  </span>
-                                  <span className="px-1.5 py-0.5 bg-brand-100 text-brand-800 font-bold rounded text-[10px]">
-                                    Class {citation.grade_level || '7'}
-                                  </span>
-                                  {citation.page_number && (
-                                    <span className="text-slate-700 font-medium">Page {citation.page_number}</span>
-                                  )}
-                                </div>
+                              <button
+                                type="button"
+                                onClick={() => toggleCitation(idx, cIdx)}
+                                className="w-full px-3 py-2 text-left flex items-center justify-between hover:bg-slate-100 transition-colors"
+                              >
+                                <span className="font-semibold text-slate-800 truncate">
+                                  {citation.source_curriculum || 'NCERT'} Class {citation.grade_level || 7} {citation.subject} — {citation.chapter_title || `Chapter ${citation.chapter_number}`} (p. {citation.page_number || 'N/A'})
+                                </span>
+                                {isExpanded ? (
+                                  <ChevronUp className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
+                                ) : (
+                                  <ChevronDown className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
+                                )}
+                              </button>
 
-                                <div className="flex items-center gap-2">
+                              {isExpanded && (
+                                <div className="px-3 pb-3 pt-1 border-t border-slate-200 bg-white space-y-2">
+                                  <p className="text-xs text-slate-700 italic border-l-2 border-brand-500 pl-2">
+                                    "{citation.text_excerpt || citation.text || 'Textbook excerpt grounded for this topic.'}"
+                                  </p>
                                   {citation.source_url && (
                                     <a
                                       href={citation.source_url}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="btn-touch px-2 py-1 text-brand-700 hover:text-brand-900 font-medium flex items-center gap-1"
-                                      title="Open official NCERT textbook page"
+                                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-brand-700 hover:text-brand-800 hover:underline"
                                     >
-                                      <span>Textbook Link</span>
+                                      <span>View Official Textbook Source</span>
                                       <ExternalLink className="w-3 h-3" />
                                     </a>
-                                  )}
-                                  <button
-                                    type="button"
-                                    onClick={() => toggleCitation(index, citIdx)}
-                                    className="btn-touch p-1 text-slate-500 hover:text-slate-800"
-                                    aria-label="Toggle citation details"
-                                  >
-                                    {isExpanded ? (
-                                      <ChevronUp className="w-4 h-4" />
-                                    ) : (
-                                      <ChevronDown className="w-4 h-4" />
-                                    )}
-                                  </button>
-                                </div>
-                              </div>
-
-                              {isExpanded && (
-                                <div className="mt-2 pt-2 border-t border-slate-200 text-slate-600 text-[11px] leading-relaxed">
-                                  <p>
-                                    <strong>Source Verification:</strong> Grounded in verified state textbook curriculum standards under SDG 4 open education guidelines.
-                                  </p>
-                                  {citation.source_url && (
-                                    <p className="mt-1 truncate">
-                                      <strong>URL:</strong>{' '}
-                                      <a
-                                        href={citation.source_url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-brand-600 hover:underline"
-                                      >
-                                        {citation.source_url}
-                                      </a>
-                                    </p>
                                   )}
                                 </div>
                               )}
@@ -377,25 +394,20 @@ export function TutorView({ student, syncState }) {
                   )}
                 </div>
               </div>
-            )}
-          </div>
-        ))}
+            );
+          })
+        )}
 
-        {/* Loading Skeleton */}
+        {/* Loading Skeleton during RAG retrieval */}
         {loading && (
-          <div className="flex justify-start animate-pulse">
-            <div className="w-full sm:max-w-[85%] classroom-card p-5 border-l-4 border-l-brand-400">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-6 h-6 rounded-full bg-slate-200" />
-                <div className="h-4 w-32 bg-slate-200 rounded" />
-              </div>
-              <div className="space-y-2.5">
-                <div className="h-4 bg-slate-200 rounded w-full" />
-                <div className="h-4 bg-slate-200 rounded w-5/6" />
-                <div className="h-4 bg-slate-200 rounded w-4/6" />
-              </div>
-              <div className="mt-4 p-3 bg-slate-100 rounded-lg">
-                <div className="h-3.5 bg-slate-200 rounded w-3/4" />
+          <div className="flex flex-col gap-2 max-w-[85%] animate-pulse">
+            <div className="bg-white border border-slate-200 rounded-2xl rounded-tl-xs p-4 space-y-2.5 shadow-xs">
+              <div className="h-3 bg-slate-200 rounded w-28" />
+              <div className="h-3.5 bg-slate-200 rounded w-full" />
+              <div className="h-3.5 bg-slate-200 rounded w-5/6" />
+              <div className="h-3.5 bg-slate-200 rounded w-3/4" />
+              <div className="pt-2 flex items-center gap-2">
+                <div className="h-3 bg-brand-100 rounded w-36" />
               </div>
             </div>
           </div>
@@ -433,16 +445,20 @@ export function TutorView({ student, syncState }) {
           type="text"
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
-          placeholder={`Ask your ${subject} doubt (e.g. "Why does ice melt faster in warm water?")...`}
-          className="flex-1 min-h-[44px] px-3.5 py-2 text-sm sm:text-base bg-transparent border-0 focus:ring-0 text-slate-900 placeholder:text-slate-400 outline-none"
-          disabled={loading}
+          placeholder={
+            isOnline
+              ? `Ask your ${subject} doubt (e.g. "Why does ice melt faster in warm water?")...`
+              : 'Live doubt asking is paused offline — Reviewing cached history.'
+          }
+          className="flex-1 min-h-[44px] px-3.5 py-2 text-sm sm:text-base bg-transparent border-0 focus:ring-0 text-slate-900 placeholder:text-slate-400 outline-none disabled:cursor-not-allowed"
+          disabled={loading || !isOnline}
           maxLength={1000}
         />
 
         <button
           type="submit"
-          disabled={loading || !question.trim()}
-          className="btn-touch px-4 py-2 bg-brand-600 hover:bg-brand-700 disabled:bg-slate-300 text-white font-semibold rounded-lg shadow-sm flex items-center gap-1.5 transition-all text-sm"
+          disabled={loading || !question.trim() || !isOnline}
+          className="btn-touch px-4 py-2 bg-brand-600 hover:bg-brand-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-semibold rounded-lg shadow-sm flex items-center gap-1.5 transition-all text-sm"
           aria-label="Send doubt question"
         >
           <span>Ask</span>

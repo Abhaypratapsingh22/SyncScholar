@@ -155,9 +155,11 @@ async function callGeminiTutor(systemInstruction, userPrompt) {
           typeof parsed !== 'object' ||
           Array.isArray(parsed) ||
           typeof parsed.answer !== 'string' ||
-          !parsed.answer.trim()
+          !parsed.answer.trim() ||
+          typeof parsed.socratic_follow_up !== 'string' ||
+          !parsed.socratic_follow_up.trim()
         ) {
-          throw new Error('LLM response JSON is missing a non-empty string "answer" field.');
+          throw new Error('LLM response JSON is missing a non-empty string "answer" or "socratic_follow_up" field.');
         }
 
         return parsed;
@@ -193,31 +195,78 @@ async function callGeminiTutor(systemInstruction, userPrompt) {
     }
   }
 
-  throw primaryError || lastError || new Error('All Gemini LLM models failed to synthesize tutor response.');
+  throw lastError || primaryError || new Error('All Gemini LLM models failed to synthesize tutor response.');
 }
 
 /**
- * Deduplicates and extracts unique citations from retrieved chunks.
+ * Matches selected model citations against verified retrieved chunk metadata,
+ * falling back to verified retrieved chunks when the model selects none.
+ *
+ * @param {Array} chunks - Retrieved textbook chunks with metadata
+ * @param {Array} [selectedCitations] - Model-selected citations array
+ * @returns {Array} Deduplicated verified citations
  */
-function extractCitationsFromChunks(chunks) {
+function extractCitationsFromChunks(chunks, selectedCitations = []) {
   const seen = new Set();
-  const citations = [];
+  const matched = [];
 
+  if (Array.isArray(selectedCitations) && selectedCitations.length > 0) {
+    for (const sel of selectedCitations) {
+      if (!sel || typeof sel !== 'object') continue;
+
+      const foundChunk = chunks.find((c) => {
+        const meta = c.metadata || {};
+        if (sel.page_number && Number(sel.page_number) === Number(meta.page_number)) {
+          return true;
+        }
+        if (
+          sel.chapter_title &&
+          meta.chapter_title &&
+          meta.chapter_title.toLowerCase().includes(String(sel.chapter_title).toLowerCase())
+        ) {
+          return true;
+        }
+        return false;
+      });
+
+      if (foundChunk) {
+        const meta = foundChunk.metadata || {};
+        const key = `${meta.grade_level}-${meta.chapter_number}-${meta.page_number}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          matched.push({
+            chapter_title: meta.chapter_title || 'General',
+            grade_level: meta.grade_level || null,
+            page_number: meta.page_number || null,
+            source_url: meta.source_url || null,
+          });
+        }
+      }
+    }
+  }
+
+  // If matching selected citations against retrieved chunks produced verified entries, return them
+  if (matched.length > 0) {
+    return matched;
+  }
+
+  // Verified fallback when the model selects none or no matches are found
   for (const c of chunks) {
     const meta = c.metadata || {};
     const key = `${meta.grade_level}-${meta.chapter_number}-${meta.page_number}`;
     if (!seen.has(key)) {
       seen.add(key);
-      citations.push({
+      matched.push({
         chapter_title: meta.chapter_title || 'General',
         grade_level: meta.grade_level || null,
         page_number: meta.page_number || null,
         source_url: meta.source_url || null,
       });
+      if (matched.length >= 2) break;
     }
   }
 
-  return citations;
+  return matched;
 }
 
 /**
@@ -299,8 +348,8 @@ export async function askTutor({
 
   const synthesis = await callGeminiTutor(systemInstruction, userPrompt);
 
-  // Guarantee citations are derived strictly from verified retrieved chunk metadata
-  const finalCitations = extractCitationsFromChunks(retrievalResult.chunks);
+  // Derive citations from retrieved passages the model selected, with verified fallback
+  const finalCitations = extractCitationsFromChunks(retrievalResult.chunks, synthesis.citations);
 
   const primaryLoId =
     synthesis.detected_learning_objective_id ||

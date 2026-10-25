@@ -82,6 +82,7 @@ const quizAttemptSchema = new Schema(
       type: String,
       required: [true, 'Learning objective ID is required'],
       trim: true,
+      uppercase: true,
       index: true,
     },
     // Subject normalized to lowercase
@@ -146,7 +147,10 @@ const quizAttemptSchema = new Schema(
 // 1. Ensure idempotent attempts per student
 quizAttemptSchema.index({ student_id: 1, client_attempt_id: 1 }, { unique: true });
 
-// 2. Fetch student history for a specific objective ordered by recency
+// 2. Heatmap join optimization: student_id and learning_objective_id in that order
+quizAttemptSchema.index({ student_id: 1, learning_objective_id: 1 });
+
+// 3. Fetch student history for a specific objective ordered by recency
 quizAttemptSchema.index({ student_id: 1, learning_objective_id: 1, createdAt: -1 });
 
 // 2. Aggregate teacher heatmap analytics by learning objective across classrooms

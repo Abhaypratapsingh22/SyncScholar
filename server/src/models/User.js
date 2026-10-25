@@ -23,6 +23,7 @@ const conceptMasterySchema = new Schema(
       type: String,
       required: [true, 'Learning objective ID is required'],
       trim: true,
+      uppercase: true,
     },
     subject: {
       type: String,

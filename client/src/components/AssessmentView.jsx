@@ -8,18 +8,22 @@
  * 3. Immediate textbook-grounded explanations after each answer
  * 4. Visual mastery progress bars (EMA score tracking)
  * 5. Dexie.js offline-first queueing with idempotent client_attempt_id UUIDs
- * 6. Resilient online/offline states and caching
+ * 6. Resilient online/offline states, cached card decks, and graceful RAG limits
  */
 
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api.js';
 import {
-  queueOfflineQuizAttempt,
-  cacheAssessment,
-  getCachedAssessment,
-  getAllCachedFlashcardDecks,
+  queuePendingQuizSubmission,
+  markQuizSubmissionSynced,
+  clearSyncedQuizSubmissions,
+  cacheFlashcardDeck,
+  cacheQuiz,
+  getCachedFlashcards,
+  getCachedQuiz,
   generateClientAttemptUuid,
-} from '../db/indexedDb.js';
+} from '../db/offlineDb.js';
+import { syncService } from '../services/syncService.js';
 import { EmptyState } from './EmptyState.jsx';
 import {
   CheckCircle2,
@@ -35,6 +39,8 @@ import {
   Layers,
   Flame,
   Check,
+  WifiOff,
+  CloudUpload,
 } from 'lucide-react';
 
 const TOPIC_PRESETS = [
@@ -139,26 +145,66 @@ export function AssessmentView({ student, syncState }) {
   const [isFlipped, setIsFlipped] = useState(false);
   const [masteredCards, setMasteredCards] = useState(new Set());
 
-  // Load existing cached assessment if available
+  const isOnline = syncState?.isOnline ?? true;
+
+  // Hydrate local cache or fallback for the selected topic
   useEffect(() => {
     async function loadCache() {
       try {
-        const cacheKey = `${selectedTopic.subject}_${selectedTopic.loId}`;
-        const cached = await getCachedAssessment(cacheKey);
-        if (cached && cached.questions && cached.questions.length > 0) {
-          setAssessmentData(cached);
+        const cachedQuiz = await getCachedQuiz(selectedTopic.subject, selectedTopic.loId);
+        const cachedCards = await getCachedFlashcards(selectedTopic.subject, selectedTopic.loId);
+
+        if (cachedQuiz || cachedCards) {
+          setAssessmentData({
+            subject: selectedTopic.subject,
+            learning_objective_id: selectedTopic.loId,
+            grade_level: student?.current_grade || 7,
+            questions: cachedQuiz?.questions || [],
+            flashcards: cachedCards?.cards || [],
+          });
+        } else if (selectedTopic.loId === 'SCI-07-HEAT-04') {
+          // Pre-cache fallback deck for instant offline use only for SCI-07-HEAT-04
+          await cacheQuiz({
+            id: `${selectedTopic.subject}_${selectedTopic.loId}`,
+            subject: selectedTopic.subject,
+            learning_objective_id: selectedTopic.loId,
+            grade_level: 7,
+            questions: OFFLINE_FALLBACK_DECK.questions,
+          });
+          await cacheFlashcardDeck({
+            id: `${selectedTopic.subject}_${selectedTopic.loId}`,
+            subject: selectedTopic.subject,
+            learning_objective_id: selectedTopic.loId,
+            grade_level: 7,
+            cards: OFFLINE_FALLBACK_DECK.flashcards,
+          });
+          setAssessmentData(OFFLINE_FALLBACK_DECK);
         } else {
-          // Pre-cache fallback deck for instant offline use
-          await cacheAssessment(cacheKey, OFFLINE_FALLBACK_DECK);
+          // Unmatched topic without cached records: show empty state
+          setAssessmentData({
+            subject: selectedTopic.subject,
+            learning_objective_id: selectedTopic.loId,
+            grade_level: student?.current_grade || 7,
+            questions: [],
+            flashcards: [],
+          });
         }
       } catch (err) {
         console.warn('Cache load warning:', err);
       }
     }
     loadCache();
-  }, [selectedTopic]);
+  }, [selectedTopic, student]);
 
   const handleGenerateAssessment = async () => {
+    if (!isOnline) {
+      setFeedbackMessage({
+        type: 'info',
+        text: 'Live RAG generation is unavailable offline. Reviewing cached textbook deck.',
+      });
+      return;
+    }
+
     setLoading(true);
     setFeedbackMessage(null);
     setQuizSubmitted(false);
@@ -177,8 +223,22 @@ export function AssessmentView({ student, syncState }) {
       if (response?.success && response?.data) {
         setAssessmentData(response.data);
         // Cache in Dexie for offline use
-        const cacheKey = `${selectedTopic.subject}_${selectedTopic.loId}`;
-        await cacheAssessment(cacheKey, response.data);
+        const cacheId = `${selectedTopic.subject}_${selectedTopic.loId}`;
+        await cacheQuiz({
+          id: cacheId,
+          subject: selectedTopic.subject,
+          learning_objective_id: selectedTopic.loId,
+          grade_level: student?.current_grade || 7,
+          questions: response.data.questions || [],
+        });
+        await cacheFlashcardDeck({
+          id: cacheId,
+          subject: selectedTopic.subject,
+          learning_objective_id: selectedTopic.loId,
+          grade_level: student?.current_grade || 7,
+          cards: response.data.flashcards || [],
+        });
+
         setFeedbackMessage({
           type: 'success',
           text: 'Fresh textbook diagnostic questions loaded!',
@@ -189,19 +249,38 @@ export function AssessmentView({ student, syncState }) {
     } catch (err) {
       console.warn('Assessment generation fallback to cache:', err);
       // Fall back to local Dexie cache
-      const cacheKey = `${selectedTopic.subject}_${selectedTopic.loId}`;
-      const cached = await getCachedAssessment(cacheKey);
-      if (cached) {
-        setAssessmentData(cached);
+      const cachedQuiz = await getCachedQuiz(selectedTopic.subject, selectedTopic.loId);
+      const cachedCards = await getCachedFlashcards(selectedTopic.subject, selectedTopic.loId);
+
+      if (cachedQuiz || cachedCards) {
+        setAssessmentData({
+          subject: selectedTopic.subject,
+          learning_objective_id: selectedTopic.loId,
+          grade_level: student?.current_grade || 7,
+          questions: cachedQuiz?.questions || [],
+          flashcards: cachedCards?.cards || [],
+        });
         setFeedbackMessage({
           type: 'info',
           text: 'Using cached diagnostic deck from your offline storage.',
         });
-      } else {
+      } else if (selectedTopic.loId === 'SCI-07-HEAT-04') {
         setAssessmentData(OFFLINE_FALLBACK_DECK);
         setFeedbackMessage({
           type: 'info',
           text: 'Loaded verified curriculum starter deck for offline practice.',
+        });
+      } else {
+        setAssessmentData({
+          subject: selectedTopic.subject,
+          learning_objective_id: selectedTopic.loId,
+          grade_level: student?.current_grade || 7,
+          questions: [],
+          flashcards: [],
+        });
+        setFeedbackMessage({
+          type: 'info',
+          text: 'No cached assessment available for this topic offline.',
         });
       }
     } finally {
@@ -244,7 +323,7 @@ export function AssessmentView({ student, syncState }) {
     const clientAttemptUuid = generateClientAttemptUuid();
     const attemptPayload = {
       client_attempt_id: clientAttemptUuid,
-      student_id: student?.id || 'offline_student',
+      student_id: student?.id || student?._id || 'offline_student',
       learning_objective_id: selectedTopic.loId,
       subject: selectedTopic.subject,
       grade_level: student?.current_grade || 7,
@@ -253,11 +332,12 @@ export function AssessmentView({ student, syncState }) {
       max_score: questions.length,
     };
 
-    // Always persist to Dexie first for offline resilience (AGENTS.md Mandate)
-    await queueOfflineQuizAttempt(attemptPayload);
+    // Always persist to Dexie pending store first to guarantee zero attempt loss (AGENTS.md Mandate)
+    await queuePendingQuizSubmission(attemptPayload);
+    await syncService.refreshPendingCount();
 
     // If online, immediately try submitting to server
-    if (syncState.isOnline) {
+    if (isOnline) {
       try {
         await api.submitQuizAttempt({
           client_attempt_id: clientAttemptUuid,
@@ -267,6 +347,12 @@ export function AssessmentView({ student, syncState }) {
           questions: formattedQuestions,
           synced_from_offline: false,
         });
+
+        // Mark synced and delete from queue
+        await markQuizSubmissionSynced(clientAttemptUuid);
+        await clearSyncedQuizSubmissions([clientAttemptUuid]);
+        await syncService.refreshPendingCount();
+
         setSubmissionStatus('online');
       } catch (err) {
         console.warn('Direct submission deferred to background sync:', err);
@@ -300,8 +386,31 @@ export function AssessmentView({ student, syncState }) {
     });
   };
 
+  const handlePrevCard = () => {
+    setIsFlipped(false);
+    setCardIndex((prev) => (prev > 0 ? prev - 1 : totalCards - 1));
+  };
+
+  const handleNextCard = () => {
+    setIsFlipped(false);
+    setCardIndex((prev) => (prev < totalCards - 1 ? prev + 1 : 0));
+  };
+
   return (
     <div className="max-w-4xl mx-auto py-6 px-4 sm:px-6">
+      {/* Offline Mode Active Banner */}
+      {!isOnline && (
+        <div className="mb-4 p-3.5 bg-amber-50/90 border border-amber-200 rounded-xl text-amber-900 text-xs flex items-center gap-2.5 shadow-xs">
+          <WifiOff className="w-4 h-4 text-amber-700 flex-shrink-0" />
+          <div className="flex-1">
+            <span className="font-bold">Offline Study Active: </span>
+            <span>
+              Browsing cached NCERT flashcards and diagnostic quizzes. All completed quiz attempts are stored safely in local IndexedDB and will auto-sync when back online.
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Top Controls & Topic Selector */}
       <div className="classroom-card p-4 sm:p-5 mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
@@ -362,14 +471,32 @@ export function AssessmentView({ student, syncState }) {
             </select>
           </div>
 
+          {/* Live RAG Generation Button (Gracefully disabled when offline) */}
           <button
             type="button"
             onClick={handleGenerateAssessment}
-            disabled={loading}
-            className="btn-touch px-4 py-2 bg-brand-600 hover:bg-brand-700 disabled:bg-slate-300 text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-1.5 transition-all"
+            disabled={loading || !isOnline}
+            className={`btn-touch px-4 py-2 text-xs font-bold rounded-lg shadow-sm flex items-center gap-1.5 transition-all ${
+              isOnline
+                ? 'bg-brand-600 hover:bg-brand-700 text-white'
+                : 'bg-slate-200 text-slate-500 cursor-not-allowed border border-slate-300'
+            }`}
+            title={!isOnline ? 'Live generation paused while offline. Using cached deck.' : 'Fetch fresh questions from textbook'}
           >
-            {loading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-            <span>{loading ? 'Retrieving Textbook...' : 'New Textbook Questions'}</span>
+            {loading ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            ) : isOnline ? (
+              <Sparkles className="w-3.5 h-3.5" />
+            ) : (
+              <WifiOff className="w-3.5 h-3.5 text-slate-500" />
+            )}
+            <span>
+              {loading
+                ? 'Retrieving Textbook...'
+                : isOnline
+                ? 'New Textbook Questions'
+                : 'Live Generation Paused (Offline)'}
+            </span>
           </button>
         </div>
 
@@ -399,20 +526,18 @@ export function AssessmentView({ student, syncState }) {
       {/* ========================================================================= */}
       {activeSubTab === 'quiz' && (
         <div className="space-y-6">
-          {/* Questions Container */}
           {assessmentData.questions && assessmentData.questions.length > 0 ? (
             assessmentData.questions.map((q, qIndex) => {
               const selectedOpt = userAnswers[qIndex];
-              const isAnswered = selectedOpt !== undefined;
 
               return (
                 <div key={qIndex} className="classroom-card p-5 sm:p-6 transition-all">
                   {/* Question Header */}
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="px-2.5 py-1 bg-brand-50 text-brand-800 font-bold text-xs rounded-md border border-brand-200">
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <span className="px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider bg-brand-100 text-brand-800 rounded-md">
                       Question {qIndex + 1} of {assessmentData.questions.length}
                     </span>
-                    <span className="text-xs text-slate-700 font-medium">
+                    <span className="text-xs text-slate-600 font-medium">
                       LO: {q.learning_objective_id || selectedTopic.loId}
                     </span>
                   </div>
@@ -498,6 +623,7 @@ export function AssessmentView({ student, syncState }) {
                       Answered: {Object.keys(userAnswers).length} of {assessmentData.questions.length} questions
                     </p>
                   </div>
+
                   <button
                     type="button"
                     onClick={handleSubmitQuiz}
@@ -518,9 +644,16 @@ export function AssessmentView({ student, syncState }) {
                         </h3>
                       </div>
                       <p className="text-xs text-slate-300 mt-1">
-                        {submissionStatus === 'online'
-                          ? '✅ Mastery score synced directly to your cloud student profile.'
-                          : '💾 Saved to local IndexedDB. Will sync automatically when network connects.'}
+                        {submissionStatus === 'online' ? (
+                          <span className="text-emerald-400 font-semibold">
+                            ✅ Synced: Mastery score updated on cloud student profile.
+                          </span>
+                        ) : (
+                          <span className="text-amber-300 font-semibold flex items-center gap-1">
+                            <CloudUpload className="w-3.5 h-3.5 inline" />
+                            Saved to local IndexedDB queue. Score recorded locally and will auto-sync when online.
+                          </span>
+                        )}
                       </p>
                     </div>
 
@@ -582,48 +715,60 @@ export function AssessmentView({ student, syncState }) {
                     setIsFlipped(!isFlipped);
                   }
                 }}
-                className={`w-full min-h-[300px] sm:min-h-[340px] classroom-card p-6 sm:p-8 cursor-pointer transition-all duration-200 select-none flex flex-col justify-between border-2 ${
-                  isFlipped
-                    ? 'bg-brand-50/60 border-brand-300'
-                    : 'bg-white border-slate-300 hover:border-brand-400'
-                }`}
                 aria-label={`Flashcard ${cardIndex + 1} of ${totalCards}. Tap to flip.`}
+                className="classroom-card min-h-[300px] sm:min-h-[340px] p-6 sm:p-8 flex flex-col justify-between cursor-pointer border-2 hover:border-brand-400 transition-all shadow-md select-none bg-gradient-to-b from-white to-slate-50/50"
               >
-                {/* Card Top Pill */}
-                <div className="flex items-center justify-between text-xs font-semibold text-slate-700 mb-4">
-                  <span className="px-2.5 py-1 rounded-md bg-slate-100 text-slate-700">
+                {/* Top Card Badge & Mastered Toggle */}
+                <div className="flex items-center justify-between">
+                  <span className="px-2.5 py-1 text-xs font-bold uppercase tracking-wider bg-brand-50 text-brand-700 rounded-md border border-brand-200">
                     Card {cardIndex + 1} of {totalCards}
                   </span>
-                  <span className="flex items-center gap-1 text-brand-700">
-                    <RotateCw className="w-3.5 h-3.5" />
-                    <span>{isFlipped ? 'Answer Side (Tap to see concept)' : 'Tap or Space to Flip'}</span>
-                  </span>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleCardMastered(cardIndex);
+                    }}
+                    className={`btn-touch px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 transition-colors ${
+                      masteredCards.has(cardIndex)
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>{masteredCards.has(cardIndex) ? 'Mastered' : 'Mark Mastered'}</span>
+                  </button>
                 </div>
 
-                {/* Card Body (Front vs Back) */}
-                <div className="py-6 text-center">
+                {/* Card Content (Front vs Back) */}
+                <div className="py-6 text-center my-auto">
                   {!isFlipped ? (
                     <div>
-                      <span className="inline-block px-3 py-1 bg-brand-100 text-brand-800 rounded-full text-xs font-bold uppercase tracking-wider mb-3">
-                        Concept / Question
-                      </span>
-                      <h3 className="text-xl sm:text-2xl font-bold text-slate-900 leading-snug max-w-xl mx-auto">
+                      <p className="text-xs uppercase font-bold tracking-widest text-brand-600 mb-2">
+                        Question / Concept
+                      </p>
+                      <h3 className="text-lg sm:text-2xl font-bold text-slate-900 leading-snug">
                         {currentCard.front}
                       </h3>
+                      <p className="text-xs text-slate-600 mt-4 flex items-center justify-center gap-1">
+                        <RotateCw className="w-3 h-3 text-slate-500" />
+                        <span>Tap anywhere to flip for textbook explanation</span>
+                      </p>
                     </div>
                   ) : (
                     <div>
-                      <span className="inline-block px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-bold uppercase tracking-wider mb-3">
-                        Textbook Explanation
-                      </span>
-                      <p className="text-base sm:text-lg text-slate-800 font-medium leading-relaxed max-w-xl mx-auto">
+                      <p className="text-xs uppercase font-bold tracking-widest text-emerald-600 mb-2">
+                        NCERT Grounded Answer
+                      </p>
+                      <p className="text-base sm:text-lg text-slate-800 leading-relaxed font-medium">
                         {currentCard.back}
                       </p>
                       {currentCard.page_number && (
-                        <div className="mt-4 inline-flex items-center gap-1.5 px-2.5 py-1 bg-white rounded-md border border-slate-200 text-xs text-slate-600">
-                          <BookOpen className="w-3.5 h-3.5 text-brand-600" />
+                        <div className="mt-4 inline-flex items-center gap-1.5 px-3 py-1 bg-brand-50 border border-brand-200 rounded-md text-xs text-brand-800 font-semibold">
+                          <BookOpen className="w-3.5 h-3.5" />
                           <span>
-                            {currentCard.chapter_title || 'NCERT Class 7 Science'}, Page {currentCard.page_number}
+                            {currentCard.chapter_title || 'Textbook'} — Page {currentCard.page_number}
                           </span>
                         </div>
                       )}
@@ -631,80 +776,36 @@ export function AssessmentView({ student, syncState }) {
                   )}
                 </div>
 
-                {/* Card Footer */}
-                <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-700">
-                  <span>Topic: {selectedTopic.title}</span>
-                  {masteredCards.has(cardIndex) && (
-                    <span className="text-emerald-700 font-bold flex items-center gap-1">
-                      <Check className="w-3.5 h-3.5" />
-                      <span>Marked Mastered</span>
-                    </span>
-                  )}
+                {/* Bottom Mastery Indicator */}
+                <div className="flex items-center justify-between text-xs text-slate-600 pt-3 border-t border-slate-100">
+                  <span>Topic: {selectedTopic.loId}</span>
+                  <span>{isFlipped ? 'Showing Answer' : 'Showing Question'}</span>
                 </div>
               </div>
 
-              {/* Deck Navigation & Mastery Action Buttons */}
-              <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-                {/* Prev / Next controls (Min 44px) */}
-                <div className="flex items-center gap-2 w-full sm:w-auto">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsFlipped(false);
-                      setCardIndex((prev) => Math.max(0, prev - 1));
-                    }}
-                    disabled={cardIndex === 0}
-                    className="btn-touch flex-1 sm:flex-initial px-4 py-2 border border-slate-300 disabled:opacity-40 rounded-xl bg-white text-slate-800 font-semibold text-xs flex items-center justify-center gap-1"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                    <span>Previous</span>
-                  </button>
+              {/* Navigation & Deck Progress Bar */}
+              <div className="mt-4 flex items-center justify-between gap-4">
+                <button
+                  type="button"
+                  onClick={handlePrevCard}
+                  className="btn-touch px-4 py-2 bg-white hover:bg-slate-100 text-slate-800 rounded-xl border border-slate-200 font-semibold text-xs flex items-center gap-1 shadow-xs"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  <span>Previous</span>
+                </button>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsFlipped(false);
-                      setCardIndex((prev) => Math.min(totalCards - 1, prev + 1));
-                    }}
-                    disabled={cardIndex === totalCards - 1}
-                    className="btn-touch flex-1 sm:flex-initial px-4 py-2 border border-slate-300 disabled:opacity-40 rounded-xl bg-white text-slate-800 font-semibold text-xs flex items-center justify-center gap-1"
-                  >
-                    <span>Next</span>
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
+                <div className="text-xs font-semibold text-slate-600">
+                  Mastered: {masteredCards.size} / {totalCards}
                 </div>
 
-                {/* Mastery Toggles */}
-                <div className="flex items-center gap-2 w-full sm:w-auto">
-                  <button
-                    type="button"
-                    onClick={() => toggleCardMastered(cardIndex)}
-                    className={`btn-touch flex-1 sm:flex-initial px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                      masteredCards.has(cardIndex)
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100'
-                    }`}
-                  >
-                    <Check className="w-4 h-4" />
-                    <span>{masteredCards.has(cardIndex) ? 'Mastered' : 'Mark as Mastered'}</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Visual Deck Progress Bar */}
-              <div className="mt-6 classroom-card p-4">
-                <div className="flex justify-between text-xs font-medium text-slate-700 mb-1.5">
-                  <span>Deck Review Progress</span>
-                  <span className="font-bold text-slate-900">
-                    {masteredCards.size} of {totalCards} cards mastered
-                  </span>
-                </div>
-                <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-emerald-500 rounded-full transition-all duration-300"
-                    style={{ width: `${(masteredCards.size / totalCards) * 100}%` }}
-                  />
-                </div>
+                <button
+                  type="button"
+                  onClick={handleNextCard}
+                  className="btn-touch px-4 py-2 bg-white hover:bg-slate-100 text-slate-800 rounded-xl border border-slate-200 font-semibold text-xs flex items-center gap-1 shadow-xs"
+                >
+                  <span>Next</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
               </div>
             </div>
           ) : (

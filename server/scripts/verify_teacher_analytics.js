@@ -589,7 +589,7 @@ async function runTeacherAnalyticsVerification() {
       console.log('🎉 ALL TEACHER CLASSROOM ANALYTICS TESTS PASSED PERFECTLY!');
     } else {
       console.error('❌ Some tests failed.');
-      process.exit(1);
+      process.exitCode = 1;
     }
   } finally {
     // Clean up test data

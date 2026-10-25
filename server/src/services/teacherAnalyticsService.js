@@ -84,23 +84,16 @@ export async function getClassroomWeakSpotHeatmap({
     {
       $lookup: {
         from: 'quiz_attempts',
+        localField: 'student_ids',
+        foreignField: 'student_id',
         let: {
           loId: '$_id.learning_objective_id',
-          studentIds: '$student_ids',
         },
         pipeline: [
           {
             $match: {
               $expr: {
-                $and: [
-                  {
-                    $eq: [
-                      { $toUpper: '$learning_objective_id' },
-                      { $toUpper: '$$loId' },
-                    ],
-                  },
-                  { $in: ['$student_id', '$$studentIds'] },
-                ],
+                $eq: ['$learning_objective_id', '$$loId'],
               },
             },
           },

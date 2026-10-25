@@ -577,7 +577,7 @@ export async function recordQuizAttempt({
   });
 
   const updatedMasteryRecord = {
-    learning_objective_id: learningObjectiveId.trim(),
+    learning_objective_id: normalizedLoId,
     subject: normalizedSubject,
     mastery_score: emaResult.newMastery,
     attempts_count: attemptsCount + 1,
@@ -591,7 +591,8 @@ export async function recordQuizAttempt({
     student.concept_mastery.push(updatedMasteryRecord);
   }
 
-  // 6. Persist QuizAttempt and Student atomically with transaction support
+  // 6. Persist QuizAttempt and Student atomically with transaction support.
+  // NOTE: Multi-document ACID transactions require a MongoDB replica set or mongos cluster deployment.
   let quizAttemptDoc;
   let session = null;
 
@@ -605,7 +606,7 @@ export async function recordQuizAttempt({
         {
           client_attempt_id: clientAttemptId,
           student_id: student._id,
-          learning_objective_id: learningObjectiveId.trim(),
+          learning_objective_id: normalizedLoId,
           subject: normalizedSubject,
           grade_level: effectiveGrade,
           questions: evaluatedQuestions,
@@ -622,7 +623,12 @@ export async function recordQuizAttempt({
     await session.commitTransaction();
   } catch (txErr) {
     if (session) {
-      await session.abortTransaction();
+      try {
+        await session.abortTransaction();
+      } catch (abortErr) {
+        // Guard against abort error displacing original txErr or masking duplicate-key error
+        console.warn('[assessmentService] Error while aborting transaction:', abortErr?.message);
+      }
     }
     // Handle concurrent duplicate-key error (code 11000) for compound index (student_id, client_attempt_id)
     if (txErr.code === 11000) {
@@ -692,9 +698,10 @@ export async function syncBatchQuizAttempts({ studentId, attempts }) {
   let failedCount = 0;
 
   for (const item of attempts) {
-    const clientId = item && typeof item === 'object'
-      ? (item.client_attempt_id || item.clientAttemptId || 'unknown')
-      : 'unknown';
+    const rawClientId = item && typeof item === 'object'
+      ? (item.client_attempt_id || item.clientAttemptId)
+      : undefined;
+    const resultClientId = rawClientId || 'unknown';
 
     try {
       if (!item || typeof item !== 'object') {
@@ -703,7 +710,7 @@ export async function syncBatchQuizAttempts({ studentId, attempts }) {
 
       const outcome = await recordQuizAttempt({
         studentId,
-        clientAttemptId: clientId,
+        clientAttemptId: rawClientId,
         learningObjectiveId: item.learning_objective_id || item.learningObjectiveId,
         subject: item.subject,
         gradeLevel: item.grade_level || item.gradeLevel,
@@ -714,7 +721,7 @@ export async function syncBatchQuizAttempts({ studentId, attempts }) {
       if (outcome.idempotent) {
         alreadySyncedCount += 1;
         results.push({
-          client_attempt_id: clientId,
+          client_attempt_id: resultClientId,
           status: 'already_synced',
           message: outcome.message,
           attempt_id: outcome.attempt?._id,
@@ -722,7 +729,7 @@ export async function syncBatchQuizAttempts({ studentId, attempts }) {
       } else {
         syncedCount += 1;
         results.push({
-          client_attempt_id: clientId,
+          client_attempt_id: resultClientId,
           status: 'synced',
           score: outcome.attempt?.score,
           max_score: outcome.attempt?.max_score,
@@ -733,7 +740,7 @@ export async function syncBatchQuizAttempts({ studentId, attempts }) {
     } catch (err) {
       failedCount += 1;
       results.push({
-        client_attempt_id: clientId,
+        client_attempt_id: resultClientId,
         status: 'failed',
         error: err.message,
       });

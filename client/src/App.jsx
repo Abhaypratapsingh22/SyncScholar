@@ -12,21 +12,12 @@ import AuthModal from './components/AuthModal.jsx';
 import MasteryModal from './components/MasteryModal.jsx';
 import { syncService } from './services/syncService.js';
 import { api, getAuthToken } from './services/api.js';
-import { getLocalStudentSession, saveLocalStudentSession } from './db/indexedDb.js';
-
-// Default classroom benchmark student
-const DEFAULT_STUDENT = {
-  id: '6addb0b3bea245e772075f2e',
-  name: 'Aarav Sharma (High Mastery)',
-  roll_number: 'DEMO-G7-HIGH',
-  school_id: 'SCH-DEMO-01',
-  current_grade: 7,
-};
+import { getLocalStudentSession, saveLocalStudentSession, clearLocalStudentSession } from './db/offlineDb.js';
 
 export function App() {
   const [currentTab, setCurrentTab] = useState('tutor'); // 'tutor' | 'assessment'
   const [syncState, setSyncState] = useState(syncService.getState());
-  const [student, setStudent] = useState(DEFAULT_STUDENT);
+  const [student, setStudent] = useState(null);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [masteryModalOpen, setMasteryModalOpen] = useState(false);
 
@@ -35,10 +26,33 @@ export function App() {
     const unsubscribe = syncService.subscribe((state) => {
       setSyncState(state);
     });
-    return unsubscribe;
+
+    const handleMasteryUpdated = async () => {
+      try {
+        if (getAuthToken()) {
+          const profileRes = await api.getStudentProfile();
+          const profileObj = profileRes?.profile || profileRes?.data;
+          if (profileRes?.success && profileObj) {
+            setStudent((prev) => ({
+              ...prev,
+              ...profileObj,
+            }));
+          }
+        }
+      } catch (err) {
+        console.warn('Could not refresh student profile after sync:', err);
+      }
+    };
+
+    window.addEventListener('syncscholar:mastery-updated', handleMasteryUpdated);
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener('syncscholar:mastery-updated', handleMasteryUpdated);
+    };
   }, []);
 
-  // Hydrate session or auto-authenticate default benchmark student
+  // Hydrate session or auto-authenticate default benchmark student only in DEV
   useEffect(() => {
     async function hydrateSession() {
       try {
@@ -50,26 +64,44 @@ export function App() {
           return;
         }
 
-        // Seamless auto-authentication for the default benchmark student
-        const res = await api.login({
-          roll_number: 'DEMO-G7-HIGH',
-          school_id: 'SCH-DEMO-01',
-          password: 'TestStudent@123',
-        });
-
-        if (res?.success && res.user) {
-          const profile = {
-            id: res.user.id || res.user._id,
-            name: res.user.name,
-            current_grade: res.user.current_grade || 7,
-            school_id: res.user.school_id || 'SCH-DEMO-01',
-            roll_number: res.user.roll_number || 'DEMO-G7-HIGH',
-          };
-          setStudent(profile);
-          await saveLocalStudentSession({ profile, token: res.token });
+        // Clear invalid or tokenless saved session
+        if (saved && !token) {
+          await clearLocalStudentSession();
         }
+
+        // Demo login only enabled when explicit development environment flag is active
+        if (import.meta.env.DEV) {
+          try {
+            const res = await api.login({
+              roll_number: 'DEMO-G7-HIGH',
+              school_id: 'SCH-DEMO-01',
+              password: 'TestStudent@123',
+            });
+
+            if (res?.success && res.user) {
+              const profile = {
+                id: res.user.id || res.user._id,
+                name: res.user.name,
+                current_grade: res.user.current_grade || 7,
+                school_id: res.user.school_id || 'SCH-DEMO-01',
+                roll_number: res.user.roll_number || 'DEMO-G7-HIGH',
+              };
+              setStudent(profile);
+              await saveLocalStudentSession({ profile, token: res.token });
+              return;
+            }
+          } catch (demoErr) {
+            console.warn('Could not auto-login demo student in DEV mode:', demoErr);
+          }
+        }
+
+        // Production or unauthenticated reload requires explicit sign-in
+        setStudent(null);
+        setAuthModalOpen(true);
       } catch (err) {
-        console.warn('Could not auto-login demo student:', err);
+        console.warn('Could not hydrate session:', err);
+        setStudent(null);
+        setAuthModalOpen(true);
       }
     }
     hydrateSession();
@@ -83,8 +115,10 @@ export function App() {
     setStudent(newStudent);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     setStudent(null);
+    setAuthToken(null);
+    await clearLocalStudentSession();
   };
 
   return (
@@ -103,7 +137,11 @@ export function App() {
       {/* Main Workspace Body */}
       <main className="flex-1 pb-16">
         {currentTab === 'tutor' && (
-          <TutorView student={student} syncState={syncState} />
+          <TutorView
+            student={student}
+            syncState={syncState}
+            onSelectTab={setCurrentTab}
+          />
         )}
 
         {currentTab === 'assessment' && (

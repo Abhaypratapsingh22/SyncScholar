@@ -6,7 +6,7 @@
 
 import React, { useState } from 'react';
 import { api, setAuthToken } from '../services/api.js';
-import { saveLocalStudentSession } from '../db/indexedDb.js';
+import { saveLocalStudentSession } from '../db/offlineDb.js';
 import { User, LogIn, Sparkles, X, Shield, Check, Layers, AlertCircle } from 'lucide-react';
 
 const DEMO_STUDENTS = [
@@ -72,8 +72,13 @@ export function AuthModal({ currentStudent, onAuthSuccess, onLogout, onClose }) 
         throw new Error(res?.message || 'Login failed');
       }
     } catch (err) {
+      if (!err.isOffline && !err.isTimeout) {
+        setErrorMessage(err.message || 'Demo login failed. Please check credentials or network.');
+        return;
+      }
       console.warn('Demo login network fallback:', err);
-      // In offline or local mode, construct local profile
+      // Clear any prior user's token before storing an offline fallback profile
+      setAuthToken(null);
       const offlineProfile = {
         id: `offline-${demo.rollNumber}`,
         name: demo.name,
@@ -91,6 +96,8 @@ export function AuthModal({ currentStudent, onAuthSuccess, onLogout, onClose }) 
   };
 
   const handleOfflineGuest = async () => {
+    // Clear any active token when choosing local offline guest mode
+    setAuthToken(null);
     const guestStudent = {
       id: 'local-offline-guest',
       name: 'Classroom Offline Guest',
