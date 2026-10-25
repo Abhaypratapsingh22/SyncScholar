@@ -19,9 +19,9 @@ import { retrieveRelevantChunks } from './vectorSearchService.js';
 // Initialize singleton Google Gen AI client
 const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
 
-// Default LLM model: gemini-3.8-flash (with fallback support for gemini-2.5-flash)
+// Primary LLM model with configurable fallback model (defaults to gemini-flash-latest)
 const PRIMARY_LLM_MODEL = process.env.LLM_MODEL || 'gemini-3.8-flash';
-const FALLBACK_LLM_MODEL = 'gemini-2.5-flash';
+const FALLBACK_LLM_MODEL = process.env.LLM_FALLBACK_MODEL || 'gemini-flash-latest';
 
 /**
  * Builds the strict system prompt for Socratic tutoring and curriculum grounding.
@@ -116,64 +116,157 @@ Synthesize a Socratic, grounded response following your system instructions. Res
  */
 async function callGeminiTutor(systemInstruction, userPrompt) {
   const modelsToTry = [PRIMARY_LLM_MODEL, FALLBACK_LLM_MODEL];
+  let primaryError = null;
   let lastError = null;
 
-  for (const model of modelsToTry) {
-    try {
-      const response = await ai.models.generateContent({
-        model: model,
-        contents: userPrompt,
-        config: {
-          systemInstruction: systemInstruction,
-          responseMimeType: 'application/json',
-          temperature: 0.2, // Low temperature for factual curriculum grounding
-        },
-      });
+  for (let i = 0; i < modelsToTry.length; i++) {
+    const model = modelsToTry[i];
+    let attempt = 0;
+    const maxRetries = 3;
+    let delay = 1000;
 
-      const responseText = response.text?.trim();
-      if (!responseText) {
-        throw new Error('Received empty response text from Gemini LLM.');
+    while (attempt < maxRetries) {
+      try {
+        const response = await ai.models.generateContent({
+          model: model,
+          contents: userPrompt,
+          config: {
+            systemInstruction: systemInstruction,
+            responseMimeType: 'application/json',
+            temperature: 0.2, // Low temperature for factual curriculum grounding
+          },
+        });
+
+        const responseText = response.text?.trim();
+        if (!responseText) {
+          throw new Error('Received empty response text from Gemini LLM.');
+        }
+
+        // Sanitize potential markdown fences
+        const cleanedJson = responseText
+          .replace(/^```json\s*/i, '')
+          .replace(/^```\s*/i, '')
+          .replace(/```$/i, '')
+          .trim();
+
+        const parsed = JSON.parse(cleanedJson);
+        if (
+          !parsed ||
+          typeof parsed !== 'object' ||
+          Array.isArray(parsed) ||
+          typeof parsed.answer !== 'string' ||
+          !parsed.answer.trim() ||
+          typeof parsed.socratic_follow_up !== 'string' ||
+          !parsed.socratic_follow_up.trim()
+        ) {
+          throw new Error('LLM response JSON is missing a non-empty string "answer" or "socratic_follow_up" field.');
+        }
+
+        return parsed;
+      } catch (err) {
+        attempt++;
+        if (i === 0) {
+          primaryError = err;
+        }
+        lastError = err;
+        const isTransient =
+          err?.status === 429 ||
+          err?.status === 503 ||
+          err?.message?.includes('429') ||
+          err?.message?.includes('503') ||
+          err?.message?.includes('fetch failed') ||
+          err?.message?.includes('RESOURCE_EXHAUSTED') ||
+          err?.message?.includes('UNAVAILABLE') ||
+          err?.message?.includes('high demand') ||
+          err?.message?.includes('ENOTFOUND') ||
+          err?.message?.includes('ETIMEDOUT');
+
+        if (isTransient && attempt < maxRetries) {
+          console.warn(
+            `[ragTutorService] Transient error calling "${model}": ${err.message}. Retrying in ${delay}ms (Attempt ${attempt}/${maxRetries})...`
+          );
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          delay *= 2;
+        } else {
+          console.warn(`[ragTutorService] Model "${model}" failed: ${err.message}.`);
+          break;
+        }
       }
-
-      // Sanitize potential markdown fences
-      const cleanedJson = responseText
-        .replace(/^```json\s*/i, '')
-        .replace(/^```\s*/i, '')
-        .replace(/```$/i, '')
-        .trim();
-
-      return JSON.parse(cleanedJson);
-    } catch (err) {
-      lastError = err;
-      console.warn(`[ragTutorService] Model "${model}" failed: ${err.message}. Trying next candidate...`);
     }
   }
 
-  throw lastError || new Error('All Gemini LLM models failed to synthesize tutor response.');
+  throw lastError || primaryError || new Error('All Gemini LLM models failed to synthesize tutor response.');
 }
 
 /**
- * Deduplicates and extracts unique citations from retrieved chunks.
+ * Matches selected model citations against verified retrieved chunk metadata,
+ * falling back to verified retrieved chunks when the model selects none.
+ *
+ * @param {Array} chunks - Retrieved textbook chunks with metadata
+ * @param {Array} [selectedCitations] - Model-selected citations array
+ * @returns {Array} Deduplicated verified citations
  */
-function extractCitationsFromChunks(chunks) {
+function extractCitationsFromChunks(chunks, selectedCitations = []) {
   const seen = new Set();
-  const citations = [];
+  const matched = [];
 
+  if (Array.isArray(selectedCitations) && selectedCitations.length > 0) {
+    for (const sel of selectedCitations) {
+      if (!sel || typeof sel !== 'object') continue;
+
+      const foundChunk = chunks.find((c) => {
+        const meta = c.metadata || {};
+        if (sel.page_number && Number(sel.page_number) === Number(meta.page_number)) {
+          return true;
+        }
+        if (
+          sel.chapter_title &&
+          meta.chapter_title &&
+          meta.chapter_title.toLowerCase().includes(String(sel.chapter_title).toLowerCase())
+        ) {
+          return true;
+        }
+        return false;
+      });
+
+      if (foundChunk) {
+        const meta = foundChunk.metadata || {};
+        const key = `${meta.grade_level}-${meta.chapter_number}-${meta.page_number}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          matched.push({
+            chapter_title: meta.chapter_title || 'General',
+            grade_level: meta.grade_level || null,
+            page_number: meta.page_number || null,
+            source_url: meta.source_url || null,
+          });
+        }
+      }
+    }
+  }
+
+  // If matching selected citations against retrieved chunks produced verified entries, return them
+  if (matched.length > 0) {
+    return matched;
+  }
+
+  // Verified fallback when the model selects none or no matches are found
   for (const c of chunks) {
     const meta = c.metadata || {};
     const key = `${meta.grade_level}-${meta.chapter_number}-${meta.page_number}`;
     if (!seen.has(key)) {
       seen.add(key);
-      citations.push({
+      matched.push({
         chapter_title: meta.chapter_title || 'General',
         grade_level: meta.grade_level || null,
         page_number: meta.page_number || null,
         source_url: meta.source_url || null,
       });
+      if (matched.length >= 2) break;
     }
   }
 
-  return citations;
+  return matched;
 }
 
 /**
@@ -255,12 +348,8 @@ export async function askTutor({
 
   const synthesis = await callGeminiTutor(systemInstruction, userPrompt);
 
-  // Guarantee citations fallback to verified retrieved chunk metadata if LLM misses any
-  const fallbackCitations = extractCitationsFromChunks(retrievalResult.chunks);
-  const finalCitations =
-    Array.isArray(synthesis.citations) && synthesis.citations.length > 0
-      ? synthesis.citations
-      : fallbackCitations;
+  // Derive citations from retrieved passages the model selected, with verified fallback
+  const finalCitations = extractCitationsFromChunks(retrievalResult.chunks, synthesis.citations);
 
   const primaryLoId =
     synthesis.detected_learning_objective_id ||

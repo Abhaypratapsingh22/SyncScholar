@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192" fill="none">
+  <rect width="192" height="192" rx="36" fill="#026bc7"/>
+  <rect x="12" y="12" width="168" height="168" rx="28" fill="#ffffff" fill-opacity="0.08"/>
+  <!-- Open Textbook Pages -->
+  <path d="M44 138V64c0-6.627 5.373-12 12-12h32c6 0 8 4 8 8v78c-5-4-12-6-20-6H56c-4.418 0-8 2.686-12 6z" fill="#ffffff"/>
+  <path d="M148 138V64c0-6.627-5.373-12-12-12h-32c-6 0-8 4-8 8v78c5-4 12-6 20-6h20c4.418 0 8 2.686 12 6z" fill="#f0f7ff"/>
+  <!-- Sync Arrows -->
+  <path d="M96 52a24 24 0 1 0 20 10.7" stroke="#38bdf8" stroke-width="6" stroke-linecap="round"/>
+  <polyline points="118 54 116 64 106 62" stroke="#38bdf8" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Educational Sparkle / SDG 4 Badge -->
+  <circle cx="140" cy="52" r="14" fill="#059669"/>
+  <text x="140" y="56" text-anchor="middle" font-size="11" font-weight="bold" fill="#ffffff" font-family="system-ui, sans-serif">4</text>
+</svg>
