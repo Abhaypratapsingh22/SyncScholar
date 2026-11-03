@@ -14,6 +14,7 @@ export function Header({
   onTriggerSync,
   onOpenAuth,
   onOpenMastery,
+  onUpdateGrade,
   currentTab,
   onSelectTab,
 }) {
@@ -40,6 +41,23 @@ export function Header({
           {/* Network & Sync Status Pill (AGENTS.md & Prompt Mandate) */}
           <div className="flex items-center gap-2">
             <NetworkStatusPill syncState={syncState} onTriggerSync={onTriggerSync} />
+
+            {/* Quick Grade Badge / Switcher */}
+            <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-100 border border-slate-300 rounded-lg text-xs font-semibold text-slate-800">
+              <span className="text-[10px] text-slate-700 uppercase font-bold hidden sm:inline">Class:</span>
+              <select
+                aria-label="Active Curriculum Class"
+                value={student?.current_grade || 9}
+                onChange={(e) => onUpdateGrade?.(Number(e.target.value))}
+                className="bg-transparent font-bold text-brand-700 focus:outline-none cursor-pointer"
+              >
+                <option value={6}>Class 6</option>
+                <option value={7}>Class 7</option>
+                <option value={8}>Class 8</option>
+                <option value={9}>Class 9</option>
+                <option value={10}>Class 10</option>
+              </select>
+            </div>
 
             {/* Student Profile & Quick Actions */}
             {student ? (

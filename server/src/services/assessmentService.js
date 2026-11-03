@@ -34,9 +34,9 @@ import { retrieveRelevantChunks } from './vectorSearchService.js';
 // Initialize singleton Google Gen AI client with validated API key
 const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
 
-// Primary assessment model with configurable fallback model (defaults to gemini-flash-latest)
-const PRIMARY_ASSESSMENT_MODEL = process.env.LLM_MODEL || 'gemini-3.8-flash';
-const FALLBACK_ASSESSMENT_MODEL = process.env.LLM_FALLBACK_MODEL || 'gemini-flash-latest';
+// Primary assessment model with configurable fallback model (defaults to active quota models)
+const PRIMARY_ASSESSMENT_MODEL = process.env.LLM_MODEL || 'gemini-flash-lite-latest';
+const FALLBACK_ASSESSMENT_MODEL = process.env.LLM_FALLBACK_MODEL || 'gemini-3.5-flash';
 
 // EMA smoothing factor defined in the pedagogical specification
 export const EMA_ALPHA = 0.4;
@@ -130,15 +130,23 @@ Generate 3 Diagnostic MCQs and 3 Study Flashcards grounded STRICTLY in these pas
  * Calls Gemini with structured JSON output and model fallback.
  */
 async function callGeminiAssessment(systemInstruction, userPrompt) {
-  const modelsToTry = [PRIMARY_ASSESSMENT_MODEL, FALLBACK_ASSESSMENT_MODEL];
+  const modelsToTry = [
+    PRIMARY_ASSESSMENT_MODEL,
+    FALLBACK_ASSESSMENT_MODEL,
+    'gemini-flash-lite-latest',
+    'gemini-3.5-flash',
+    'gemini-3.1-flash-lite',
+    'gemini-3.5-flash-lite',
+  ].filter((m, idx, arr) => m && arr.indexOf(m) === idx);
+
   let primaryError = null;
   let lastError = null;
 
   for (let i = 0; i < modelsToTry.length; i++) {
     const model = modelsToTry[i];
     let attempt = 0;
-    const maxRetries = 3;
-    let delay = 1000;
+    const maxRetries = 2;
+    let delay = 800;
 
     while (attempt < maxRetries) {
       try {

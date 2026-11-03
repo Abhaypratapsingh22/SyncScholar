@@ -11,6 +11,16 @@ import { User, LogIn, Sparkles, X, Shield, Check, Layers, AlertCircle } from 'lu
 
 const DEMO_STUDENTS = [
   {
+    name: 'Kabir Rao',
+    rollNumber: 'DEMO-G9-HIGH',
+    schoolId: 'SCH-DEMO-01',
+    password: 'TestStudent@123',
+    grade: 9,
+    tag: 'Class 9 Science (NCERT)',
+    badgeColor: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+    description: 'Class 9 Science (Sound Waves, Cell, Motion, Atoms) Socratic Tutoring',
+  },
+  {
     name: 'Aarav Sharma',
     rollNumber: 'DEMO-G7-HIGH',
     schoolId: 'SCH-DEMO-01',

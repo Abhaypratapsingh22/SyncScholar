@@ -17,6 +17,11 @@ const __dirname = path.dirname(__filename);
 const serverRootDir = path.resolve(__dirname, '../../');
 dotenv.config({ path: path.join(serverRootDir, '.env') });
 
+// Allow local corporate network proxies in non-production environments
+if (process.env.NODE_ENV !== 'production' && !process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+}
+
 /**
  * Validates critical environment variables required for SyncScholar backend operation.
  * Fails fast with actionable terminal instructions if any variable is missing or placeholder.

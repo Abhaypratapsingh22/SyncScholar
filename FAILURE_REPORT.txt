@@ -1,0 +1,889 @@
+==================================================
+SYNCSCHOLAR CHATBOT - FAILURE AND ROOT CAUSE REPORT
+==================================================
+
+PROJECT: SyncScholar
+TESTING SCOPE: NCERT CLASS 9 SCIENCE ONLY
+TEST TYPE: Red-Team Testing / Functional QA / RAG Evaluation
+DATE: 2026-11-02
+
+--------------------------------------------------
+SECTION 1: EXECUTIVE SUMMARY
+--------------------------------------------------
+
+Total test cases executed: 70
+Passed: 41
+Failed: 29
+Partial passes: 0
+Blocked: 0
+Inconclusive: 0
+
+Total unique bugs identified: 11
+Critical: 0
+High: 5
+Medium: 5
+Low: 1
+
+Gemini API integration status:
+VERIFIED & FUNCTIONAL. The backend successfully communicates with Google Gemini API using the official '@google/genai' SDK (version 2.31.0). Out of 70 live requests, 68 queries invoked Gemini directly (average latency 2,340 ms), while 2 short queries were intercepted and refused at the pre-LLM vector search threshold stage. No API authentication errors, 429 quota failures, or fallback crashes occurred during the full red-team test suite.
+
+RAG implementation status:
+PARTIALLY FUNCTIONAL WITH MAJOR ARCHITECTURAL FLAWS. MongoDB Atlas Vector Search ($vectorSearch) is active on the 'curriculum_chunks' collection (330 chunks total: 320 Grade 9 chunks, 10 Grade 7 chunks). Pre-filtering on 'metadata.subject' ('Science') and 'metadata.grade_level' (9) operates correctly. However, the retrieval pipeline suffers from:
+1. Rigid cosine similarity cutoff (0.78 threshold) causing false out-of-syllabus refusals on casual wording.
+2. Complete absence of conversational memory in the API endpoint, causing multi-turn context collapse.
+3. Complete omission of Class 8 chunks in MongoDB Atlas, breaking prerequisite remediation mode.
+4. Curriculum divergence caused by ingesting the experimental NEP 2020 textbook ('Exploration') which lacks core classic NCERT topics (Gravitation, Mole Concept, Evaporation Cooling).
+
+Overall observations:
+SyncScholar exhibits strong architectural adherence to low-latency response generation and strict citation linking when questions match textbook phrasing exactly. However, the combination of two over-zealous guardrails—the Socratic Anti-Cheating rule (which suppresses all numerical calculations) and the Zero-Hallucination rule (which refuses any problem whose exact numbers are not in the textbook)—creates a chatbot that is almost completely incapable of assisting students with NCERT numerical problems or conversational follow-ups.
+
+--------------------------------------------------
+SECTION 2: INDIVIDUAL BUG REPORTS
+--------------------------------------------------
+
+BUG ID: BUG SS-001
+
+TITLE:
+Socratic Anti-Cheating Guardrail Suppresses Direct Numerical Answers & Full Worked Calculations
+
+CATEGORY:
+Numerical Problem-Solving / Prompt Engineering
+
+CHAPTER:
+Describing Motion Around Us (Ch 4) & Work, Energy, and Simple Machines (Ch 7)
+
+SEVERITY:
+HIGH
+
+TEST QUESTION:
+A car travels 120 metres in 10 seconds. Calculate its speed.
+
+QUESTION VARIATION:
+Direct formula numerical calculation (speed = distance / time)
+
+EXPECTED BEHAVIOUR:
+Identify distance = 120 m, time = 10 s; apply speed = distance / time; calculate 12 m/s; state unit m/s clearly with calculation steps.
+
+ACTUAL CHATBOT RESPONSE:
+To find out how fast the car is moving, we use the idea of average speed. As our textbook explains, average speed tells us how fast or slow an object moves, and it is calculated by taking the total distance travelled and dividing it by the time interval during which that distance is covered.
+
+Socratic Follow-Up:
+Based on that definition, if the car travels a total distance of 120 metres in a time interval of 10 seconds, what calculation should you perform to find the speed, and what will be the correct unit for your final answer?
+
+FAILURE DESCRIPTION:
+The chatbot identified the question as a homework/exercise problem and strictly withheld the final numerical answer (12 m/s) and division steps, providing only a conceptual definition and delegating the entire calculation to the student via the follow-up prompt.
+
+ROOT CAUSE:
+In server/src/services/ragTutorService.js (lines 117-123), Directive 3 ('Socratic Anti-Cheating Rule') instructs the LLM: 'IF IT IS A DIRECT HOMEWORK/EXERCISE PROBLEM: NEVER give away the direct, final numerical or definitive answer. Walk through Step 1 or the first clue only.' This rule makes it fundamentally impossible for the bot to provide worked numerical solutions.
+
+ROOT-CAUSE CATEGORY:
+Prompt engineering (Anti-Cheating Guardrail Conflict)
+
+SUPPORTING EVIDENCE:
+Observed consistently across TC-NUM-01, TC-NUM-02, TC-NUM-03, TC-NUM-07, TC-NUM-08, TC-NUM-09, TC-NUM-11, TC-NUM-12, TC-NUM-13, TC-NUM-14, TC-NUM-15. LLM execution traces confirm Gemini adhered strictly to system instruction directive 3.
+
+REPRODUCIBILITY:
+Reproduced (100% reproducible across all direct calculation queries)
+
+OCCURRENCES:
+12
+
+RECOMMENDED INVESTIGATION:
+Refactor system prompt to differentiate between passive cheating requests (e.g. 'Give me answer to question 4b') versus pedagogical numerical walkthrough requests. When asked 'Calculate X', the tutor should provide the full step-by-step arithmetic verification while asking an extension question in follow-up.
+
+--------------------------------------------------
+BUG ID: BUG SS-002
+
+TITLE:
+Over-Rigid Zero-Hallucination Refusal Gate Rejects Solvable In-Syllabus Numerical Problems
+
+CATEGORY:
+Numerical Problem-Solving / RAG Augmentation
+
+CHAPTER:
+Describing Motion Around Us (Ch 4) & How Forces Affect Motion (Ch 6)
+
+SEVERITY:
+HIGH
+
+TEST QUESTION:
+A train starts from a railway station and moves with a uniform acceleration of 0.2 m/s² for 5 minutes. Find its speed in km/h and distance in km.
+
+QUESTION VARIATION:
+Multi-step kinematics numerical requiring time unit conversion (minutes to seconds)
+
+EXPECTED BEHAVIOUR:
+Identify u = 0, a = 0.2 m/s², t = 300 s. Apply v = u + at = 60 m/s = 216 km/h. Apply s = ut + 1/2 at² = 9000 m = 9 km.
+
+ACTUAL CHATBOT RESPONSE:
+My approved textbook passages do not cover this specific detail yet. Let's focus on what we have in the chapter.
+
+Socratic Follow-Up:
+Would you like to explore how to calculate acceleration or distance using our textbook examples like a bus or car moving on a straight highway?
+
+FAILURE DESCRIPTION:
+The chatbot refused to solve a standard Class 9 NCERT motion numerical, stating that approved textbook passages do not cover the specific detail.
+
+ROOT CAUSE:
+In server/src/services/ragTutorService.js (lines 102-105), Directive 1 states: 'Ground EVERY factual explanation exclusively in the provided textbook passages... If the passages do not contain enough information to answer the question, state: "My approved textbook passages do not cover this specific detail yet..."'. Because the retrieved chunks from Chapter 4 contained general velocity/acceleration definitions and example 4.1 but did not contain the specific values '0.2 m/s²' or 'train starting from station', Gemini concluded that the problem data was not in the passages and triggered the refusal text.
+
+ROOT-CAUSE CATEGORY:
+RAG augmentation / Prompt engineering
+
+SUPPORTING EVIDENCE:
+Top vector score was 0.8346 (retrieved 4 valid Grade 9 Chapter 4 chunks). Retrieved chunk #1 was page 69, example on vertical displacement. Gemini logs show prompt injection succeeded, but LLM gated on missing numerical scenario.
+
+REPRODUCIBILITY:
+Reproduced (Consistent across TC-NUM-04, TC-NUM-05, TC-NUM-06, TC-NUM-10, TC-NUM-17)
+
+OCCURRENCES:
+5
+
+RECOMMENDED INVESTIGATION:
+Clarify Directive 1 in ragTutorService.js to instruct the model that mathematical principles and physical formulas from the textbook may be applied to novel numerical values provided in the student's question.
+
+--------------------------------------------------
+BUG ID: BUG SS-003
+
+TITLE:
+Overly Sensitive Vector Relevance Cutoff (0.78 Threshold) Triggers False Out-of-Syllabus Refusals on Casual Phrasing
+
+CATEGORY:
+RAG Retrieval / Metadata Filtering
+
+CHAPTER:
+Exploring Mixtures and their Separation (Ch 5)
+
+SEVERITY:
+HIGH
+
+TEST QUESTION:
+yo bro why does ice float on water man
+
+QUESTION VARIATION:
+Colloquial / slang phrasing of core density concept (density of solid water vs liquid water)
+
+EXPECTED BEHAVIOUR:
+Recognize the scientific question regarding density of ice vs water; explain that ice has lower density due to open cage-like crystal structure; maintain supportive tutor persona.
+
+ACTUAL CHATBOT RESPONSE:
+This question falls outside your Class 9 Science syllabus or verified curriculum textbooks. SyncScholar is strictly grounded in official NCERT textbooks to keep you focused on your coursework. Try asking a question related to your chapters!
+
+Socratic Follow-Up:
+Would you like to explore topics currently in your Class 9 syllabus, such as Cell Structure, Tissues, Motion, Forces, Sound Waves, or Work and Energy?
+
+FAILURE DESCRIPTION:
+The chatbot falsely flagged a core Grade 9 physics/chemistry topic as completely outside the syllabus, refusing to answer before the query even reached the LLM.
+
+ROOT CAUSE:
+In server/src/services/vectorSearchService.js (line 24), MIN_RELEVANCE_THRESHOLD is hardcoded to 0.78. MongoDB Atlas cosine similarity scores normalized as (1 + cos)/2 produced a topScore of 0.7739 for this colloquial query. Because 0.7739 < 0.78, retrieveRelevantChunks marked isOutOfSyllabus: true, triggering the out-of-syllabus refusal block in ragTutorService.js (lines 494-543) without calling Gemini.
+
+ROOT-CAUSE CATEGORY:
+Vector search / Relevance threshold
+
+SUPPORTING EVIDENCE:
+Database trace shows candidateChunks returned score 0.7739. The execution path terminated in vectorSearchService.js line 140. Response time was 608ms (zero LLM inference overhead).
+
+REPRODUCIBILITY:
+Reproduced (Occurs consistently whenever student query contains colloquial slang or filler words)
+
+OCCURRENCES:
+2
+
+RECOMMENDED INVESTIGATION:
+Lower MIN_RELEVANCE_THRESHOLD to 0.72-0.74, or introduce a query normalization / preprocessing step to strip colloquial stop words ('yo bro', 'man', 'plz') prior to query embedding.
+
+--------------------------------------------------
+BUG ID: BUG SS-004
+
+TITLE:
+Complete Absence of Conversational Context and Memory in Tutor Pipeline (Stateless Architecture)
+
+CATEGORY:
+Conversational Continuity / Backend Architecture
+
+CHAPTER:
+Describing Motion Around Us (Ch 4)
+
+SEVERITY:
+HIGH
+
+TEST QUESTION:
+Explain its formula.
+
+QUESTION VARIATION:
+Follow-up question with anaphoric reference ('its formula' referring to acceleration from turn 1)
+
+EXPECTED BEHAVIOUR:
+Retain conversational state from previous turn ('What is acceleration?'); interpret 'its' as acceleration; explain a = (v - u) / t.
+
+ACTUAL CHATBOT RESPONSE:
+This question falls outside your Class 9 Science syllabus or verified curriculum textbooks. SyncScholar is strictly grounded in official NCERT textbooks to keep you focused on your coursework. Try asking a question related to your chapters!
+
+Socratic Follow-Up:
+Would you like to explore topics currently in your Class 9 syllabus, such as Cell Structure, Tissues, Motion, Forces, Sound Waves, or Work and Energy?
+
+FAILURE DESCRIPTION:
+The chatbot failed to recognize that 'its formula' referred to acceleration, treated the phrase in complete isolation, achieved a below-threshold vector search score (0.7787), and told the student the query was outside the Class 9 syllabus.
+
+ROOT CAUSE:
+The backend endpoint POST /api/tutor/ask in server/src/controllers/tutorController.js accepts only { question, subject, grade }. It has zero support for conversation history, session memory, or turn context. In server/src/services/ragTutorService.js, buildUserPrompt only injects the isolated question string.
+
+ROOT-CAUSE CATEGORY:
+Conversation memory / Backend statelessness
+
+SUPPORTING EVIDENCE:
+Observed across all follow-up turns: TC-CONT-02 ('Explain its formula' -> 0.7787 -> Out of syllabus), TC-CONT-03 ('Give me one numerical example of this' -> Refused as detail not covered), TC-CONT-05 ('Can you summarize our whole discussion in two short sentences?' -> Refused as detail not covered).
+
+REPRODUCIBILITY:
+Reproduced (100% reproducible on any multi-turn follow-up dialogue)
+
+OCCURRENCES:
+3
+
+RECOMMENDED INVESTIGATION:
+Update /api/tutor/ask to accept conversationHistory: [{role, content}] or conversation_id. In ragTutorService, implement contextual query reformulation (condensing conversational history into a standalone retrieval query) before calling Atlas Vector Search.
+
+--------------------------------------------------
+BUG ID: BUG SS-005
+
+TITLE:
+Vector Relevance Threshold Bypassed by Incidental Keyword Matching on True Out-of-Syllabus Queries
+
+CATEGORY:
+RAG Retrieval / Out-of-Syllabus Gating
+
+CHAPTER:
+Syllabus Boundary (Ch 0) / Cell: The Building Block of Life (Ch 2)
+
+SEVERITY:
+MEDIUM
+
+TEST QUESTION:
+Does quantum entanglement allow faster-than-light communication across biological cell membranes?
+
+QUESTION VARIATION:
+Genuine collegiate-level physics/biology out-of-syllabus query containing in-syllabus keywords ('cell membranes')
+
+EXPECTED BEHAVIOUR:
+Correctly classify quantum entanglement and faster-than-light communication as outside the Class 9 Science curriculum at the retrieval stage; refuse cleanly without textbook passage retrieval.
+
+ACTUAL CHATBOT RESPONSE:
+My approved textbook passages do not cover this specific detail yet. Let's focus on what we have in the chapter.
+
+Socratic Follow-Up:
+Would you like to explore how substances actually move across cell membranes, such as through osmosis or diffusion?
+
+Citations:
+- Chapter: "Cell: The Building Block of Life", Grade 9, Page 11, URL: https://ncert.nic.in/textbook.php?jesc1=2-13
+  Excerpt: "while blocking others. You have learnt how oxygen and carbon dioxide move across the membranes of alveoli in the lungs..."
+
+FAILURE DESCRIPTION:
+The vector retrieval stage failed to detect that the core question (quantum entanglement communication) was out of syllabus. Instead, it matched on 'cell membranes', retrieved Chapter 2 passages, and Gemini gave a generic 'detail not covered' response while attaching an irrelevant biology citation about lung alveoli.
+
+ROOT CAUSE:
+Pure semantic dense vector search without curriculum intent classification allows extraneous collegiate concepts with coincidental domain nouns ('cell membranes') to score 0.786 (> 0.78 threshold). out_of_syllabus remained false.
+
+ROOT-CAUSE CATEGORY:
+Vector search / Retrieval ranking
+
+SUPPORTING EVIDENCE:
+Top score was 0.7860. metadata.out_of_syllabus was false. Irrelevant lung alveoli chunk was retrieved and cited.
+
+REPRODUCIBILITY:
+Reproduced
+
+OCCURRENCES:
+1
+
+RECOMMENDED INVESTIGATION:
+Incorporate a lightweight intent/topic classifier or evaluate out-of-syllabus refusal at the prompt level with explicit instruction to reject university-level physics concepts even if biological keywords match.
+
+--------------------------------------------------
+BUG ID: BUG SS-006
+
+TITLE:
+Curriculum Divergence: Missing Standard NCERT Class 9 Topics Due to NEP 2020 Textbook Selection
+
+CATEGORY:
+Theoretical Explanations / Syllabus Alignment
+
+CHAPTER:
+Exploring Mixtures and their Separation (Ch 5) & Atomic Foundations of Matter (Ch 9)
+
+SEVERITY:
+HIGH
+
+TEST QUESTION:
+Why does evaporation cause cooling?
+
+QUESTION VARIATION:
+Standard cause-and-effect physical chemistry conceptual explanation
+
+EXPECTED BEHAVIOUR:
+Explain that surface particles absorb thermal energy (latent heat of vaporization) from surroundings to overcome intermolecular forces, causing temperature of surroundings to drop.
+
+ACTUAL CHATBOT RESPONSE:
+My approved textbook passages do not cover this specific detail yet. Let's focus on what we have in the chapter about separating mixtures like acetone and water using distillation or obtaining salt crystals.
+
+Socratic Follow-Up:
+Based on our chapter, how do you think heating a mixture of acetone and water helps separate them when they have different boiling points?
+
+FAILURE DESCRIPTION:
+The chatbot refused to explain why evaporation causes cooling, stating that the textbook does not cover this detail, and deflected to separating acetone and water by distillation.
+
+ROOT CAUSE:
+The textbook ingested into MongoDB (raw_pdfs_data/class_9_science.txt) is the new NEP 2020 2024 textbook titled 'Exploration'. This edition eliminated the classic Chapter 1 ('Matter in Our Surroundings') where evaporation cooling was explained, and only discusses evaporation as a physical separation technique in Chapter 5. Similarly, the Mole Concept (Avogadro's constant 6.022 x 10^23) and the dedicated Gravitation chapter were deleted or restructured in this edition.
+
+ROOT-CAUSE CATEGORY:
+PDF extraction / Syllabus divergence
+
+SUPPORTING EVIDENCE:
+Grep for 'evaporation' in class_9_science.txt confirmed it only occurs in separation contexts (lines 5045-5705). Grep for 'Avogadro' returned 0 occurrences. TC-THEO-01, TC-MULTI-03, TC-FORM-03, and TC-QUAL-02 all failed due to this exact syllabus omission.
+
+REPRODUCIBILITY:
+Reproduced (100% reproducible for classic NCERT Class 9 topics omitted in NEP 2024)
+
+OCCURRENCES:
+4
+
+RECOMMENDED INVESTIGATION:
+Clarify curriculum specification in manifest.json and ingest supplementary foundational curriculum chunks for core standard NCERT topics (Matter in Our Surroundings, Gravitation, Mole Concept) to support students using standard NCERT textbooks.
+
+--------------------------------------------------
+BUG ID: BUG SS-007
+
+TITLE:
+Irrelevant and Mismatched Citation Pairing from Loose Chapter Heuristics in Citation Extraction Logic
+
+CATEGORY:
+RAG Pipeline / Citations
+
+CHAPTER:
+Earth as a System: Energy, Matter, and Life (Ch 13)
+
+SEVERITY:
+MEDIUM
+
+TEST QUESTION:
+Why do wet clothes dry faster on a windy day?
+
+QUESTION VARIATION:
+Real-world application of factors affecting evaporation rate
+
+EXPECTED BEHAVIOUR:
+Ground answer in evaporation rate factors (wind increases particle dispersion); cite Chapter 5 (Mixtures/Evaporation).
+
+ACTUAL CHATBOT RESPONSE:
+My approved textbook passages do not cover this specific detail yet. Let's focus on what we have in the chapter about how winds are formed through the uneven heating of the Earth's surface and pressure differences.
+
+Socratic Follow-Up:
+How does the movement of air, or wind, relate to pressure differences between regions according to our chapter?
+
+Citations:
+- Chapter: "Earth as a System: Energy, Matter, and Life", Grade 9, Page 259, URL: https://ncert.nic.in/textbook.php?jesc1=13-13
+  Excerpt: "Thus, uneven heating of the Earth’s surface sets up winds and forms an important part of the Earth’s atmospheric circulation. Warm air rising Fig. 13.8 (a): Valley breeze Cold air sinking Fig. 13.8 (b..."
+
+FAILURE DESCRIPTION:
+Instead of citing evaporation or solutions, the system retrieved and cited atmospheric valley breeze and wind circulation from Chapter 13, producing an unhelpful refusal and an irrelevant citation.
+
+ROOT CAUSE:
+In server/src/services/ragTutorService.js (lines 378-445), extractCitationsFromChunks matches model-selected citations loosely. When semantic vector search ranks chunks based on keyword co-occurrence ('windy day' -> 'winds formed'), the highest similarity chunk was Chapter 13 Earth systems instead of Chapter 5.
+
+ROOT-CAUSE CATEGORY:
+Vector search / Retrieval ranking
+
+SUPPORTING EVIDENCE:
+topScore was 0.8045. Top chunk was ncert_sci_g9_ch13_p259_c05. Citations attached valley breeze text excerpt.
+
+REPRODUCIBILITY:
+Reproduced
+
+OCCURRENCES:
+5
+
+RECOMMENDED INVESTIGATION:
+Implement subject/topic pre-filtering or re-ranking (cross-encoder) to ensure retrieved passages match the pedagogical domain of the question before prompt construction.
+
+--------------------------------------------------
+BUG ID: BUG SS-008
+
+TITLE:
+Hardcoded Grade 7 Curriculum Artifacts in Fallback Synthesis Handler
+
+CATEGORY:
+Gemini Integration / Fallback Architecture
+
+CHAPTER:
+Heat (Grade 7) / Global Fallback Handler
+
+SEVERITY:
+MEDIUM
+
+TEST QUESTION:
+Systematic code audit of synthesizeCurriculumFallback
+
+QUESTION VARIATION:
+Static code path analysis of rate_limited_fallback mechanism
+
+EXPECTED BEHAVIOUR:
+Fallback synthesis should be dynamically parameterized by the student's current grade (Grade 9) and the actual retrieved chunks.
+
+ACTUAL CHATBOT RESPONSE:
+Code inspection in server/src/services/ragTutorService.js lines 294-345 reveals hardcoded Grade 7 answers:
+if ((lowerQuery.includes('metal') && lowerQuery.includes('spoon')) || (lowerQuery.includes('conduction') && lowerQuery.includes('heat'))) {
+  return {
+    answer: "Great observation! In your science curriculum, heat always flows... conduction...",
+    detected_learning_objective_id: 'SCI-07-HEAT-04',
+    citations: [{ chapter_title: 'Heat', grade_level: 7, page_number: 41, source_url: 'https://ncert.nic.in/textbook/pdf/gesc104.pdf' }]
+  };
+}
+
+FAILURE DESCRIPTION:
+When LLM API calls fail or rate limits trigger, the fallback function serves hardcoded Grade 7 responses and Grade 7 PDF URLs to students regardless of whether they are in Grade 9.
+
+ROOT CAUSE:
+Legacy demo stubs in synthesizeCurriculumFallback were hardcoded for Grade 7 Science ('metal spoon', 'photosynthesis') and never updated for Grade 9 multi-grade scaling.
+
+ROOT-CAUSE CATEGORY:
+Backend / Fallback implementation
+
+SUPPORTING EVIDENCE:
+Direct code inspection of server/src/services/ragTutorService.js lines 293-345. Confirmed by client/src/components/TutorView.jsx lines 74-160 containing identical hardcoded Grade 7 patterns in CURRICULUM_STARTER_FALLBACKS.
+
+REPRODUCIBILITY:
+Confirmed via code-path audit
+
+OCCURRENCES:
+2
+
+RECOMMENDED INVESTIGATION:
+Remove hardcoded Grade 7 question patterns from both ragTutorService.js and TutorView.jsx. Ensure fallback synthesis relies entirely on generic topChunk extraction parameterized by studentGrade.
+
+--------------------------------------------------
+BUG ID: BUG SS-009
+
+TITLE:
+Broken Prerequisite Remediation Mode Due to Missing Class 8 Educational Chunks in Atlas
+
+CATEGORY:
+Adaptive Retrieval / Database Ingestion
+
+CHAPTER:
+Database Collections Plane / adaptiveFilterService
+
+SEVERITY:
+MEDIUM
+
+TEST QUESTION:
+Audit of adaptive filter generation when student mastery < 0.50
+
+QUESTION VARIATION:
+Database inspection for Grade 9 prerequisite expansion boundary
+
+EXPECTED BEHAVIOUR:
+When a Grade 9 student triggers remediation (mastery < 0.50), the system should search Grade 8 prerequisite chunks alongside Grade 9.
+
+ACTUAL CHATBOT RESPONSE:
+In server/src/services/adaptiveFilterService.js line 100:
+const prerequisiteGrade = Math.max(1, currentGrade - 1); // 9 - 1 = 8
+filter = { 'metadata.subject': 'Science', 'metadata.grade_level': { $in: [8, 9] } };
+
+Database chunk count inspection:
+Grade 7: 10 chunks
+Grade 8: 0 chunks
+Grade 9: 320 chunks
+Total chunks in collection: 330
+
+FAILURE DESCRIPTION:
+When prerequisite mode is activated for a struggling Class 9 student, the $vectorSearch query filters for grade_level IN [8, 9], but because Grade 8 has 0 chunks in MongoDB Atlas, no prerequisite scaffolding is ever retrieved.
+
+ROOT CAUSE:
+Database ingestion was executed only for Grade 9 Science and a 10-chunk sample of Grade 7 Heat. Grade 8 Science was never ingested into curriculum_chunks.
+
+ROOT-CAUSE CATEGORY:
+Database Ingestion / Remediation Architecture
+
+SUPPORTING EVIDENCE:
+Executed MongoDB Atlas aggregation: db.curriculum_chunks.aggregate([{$group: {_id: '$metadata.grade_level', count: {$sum: 1}}}]) returned {7: 10, 9: 320}. Grade 8 chunk count is confirmed zero.
+
+REPRODUCIBILITY:
+Confirmed via live database count query
+
+OCCURRENCES:
+1
+
+RECOMMENDED INVESTIGATION:
+Ingest NCERT Class 8 Science chapters into curriculum_chunks to enable prerequisite remediation for Grade 9 students as mandated by AGENTS.md Functional Pillar 3.
+
+--------------------------------------------------
+BUG ID: BUG SS-010
+
+TITLE:
+Socratic Anti-Cheating Guardrail Blocks Basic Chemical Formula Inquiries
+
+CATEGORY:
+Formulas and Notation / Prompt Engineering
+
+CHAPTER:
+Atomic Foundations of Matter (Ch 9)
+
+SEVERITY:
+MEDIUM
+
+TEST QUESTION:
+Write the chemical formula for water, carbon dioxide, sodium chloride, and calcium hydroxide.
+
+QUESTION VARIATION:
+Standard formula recall testing chemical notation and subscripts
+
+EXPECTED BEHAVIOUR:
+Provide correct chemical formulas: H2O (or H₂O), CO2 (or CO₂), NaCl, and Ca(OH)2 (or Ca(OH)₂).
+
+ACTUAL CHATBOT RESPONSE:
+To write the chemical formula of a compound, we look at the combining capacities or charges of the elements involved. For ionic compounds like calcium hydroxide, we first write the symbols of the cation and the anion with their respective charges, just like magnesium hydroxide uses magnesium and hydroxide ions. Then, we crossover the numbers of the charges as subscripts. If we have two or more polyatomic ions of the same type, like hydroxide, we enclose them in brackets with a subscript outside.
+
+Socratic Follow-Up:
+Following this criss-cross method, what would be the resulting formula if you combine the calcium ion Ca²⁺ with the hydroxide ion OH⁻?
+
+FAILURE DESCRIPTION:
+The chatbot treated the request to write basic chemical formulas as a test cheat attempt and refused to write the chemical symbols for water, CO2, NaCl, or Ca(OH)2.
+
+ROOT CAUSE:
+Directive 3 ('Socratic Anti-Cheating Rule') triggered because the query began with 'Write the chemical formula...', which the model classified as an exercise problem.
+
+ROOT-CAUSE CATEGORY:
+Prompt engineering (Anti-Cheating Guardrail Conflict)
+
+SUPPORTING EVIDENCE:
+Top score was 0.8387. LLM generated 2466ms response explaining criss-cross method without outputting the requested chemical formulas.
+
+REPRODUCIBILITY:
+Reproduced
+
+OCCURRENCES:
+1
+
+RECOMMENDED INVESTIGATION:
+Refine system instruction to permit standard nomenclature and formula recall for foundational chemical compounds while reserving Socratic withholding for full balancing or reaction prediction problems.
+
+--------------------------------------------------
+BUG ID: BUG SS-011
+
+TITLE:
+Client-Side Fallback Defaulting Citation Grade Level to Class 7
+
+CATEGORY:
+Frontend UI / Citation Rendering
+
+CHAPTER:
+Frontend Component: TutorView.jsx
+
+SEVERITY:
+LOW
+
+TEST QUESTION:
+Frontend source inspection: TutorView.jsx line 579
+
+QUESTION VARIATION:
+Code audit of citation badge template string
+
+EXPECTED BEHAVIOUR:
+Citation badge should dynamically display the student's selected grade (Grade 9) if citation.grade_level is not provided.
+
+ACTUAL CHATBOT RESPONSE:
+Line 579 of client/src/components/TutorView.jsx:
+{citation.source_curriculum || 'NCERT'} Class {citation.grade_level || 7} {citation.subject} — {citation.chapter_title || `Chapter ${citation.chapter_number}`} (p. {citation.page_number || 'N/A'})
+
+FAILURE DESCRIPTION:
+If a citation object has an undefined or null grade_level property, the UI hardcodes a fallback to 'Class 7', displaying misleading grade labels to Class 9 students.
+
+ROOT CAUSE:
+Hardcoded fallback value || 7 left over from early Grade 7 prototype development.
+
+ROOT-CAUSE CATEGORY:
+Frontend UI
+
+SUPPORTING EVIDENCE:
+Direct code reference in client/src/components/TutorView.jsx:579.
+
+REPRODUCIBILITY:
+Confirmed via static code inspection
+
+OCCURRENCES:
+1
+
+RECOMMENDED INVESTIGATION:
+Change line 579 fallback from '7' to 'selectedGrade || 9'.
+
+--------------------------------------------------
+
+--------------------------------------------------
+SECTION 3: GEMINI API INTEGRATION AUDIT
+--------------------------------------------------
+
+1. API Invocation Verification:
+   - Client Library: Official '@google/genai' SDK (v2.31.0) initialized via:
+     const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
+   - Configured Primary Model: 'gemini-flash-lite-latest' (from server/.env LLM_MODEL)
+   - Configured Fallback Model: 'gemini-3.5-flash' (from server/.env LLM_FALLBACK_MODEL)
+   - Runtime Trace: Confirmed active API calls via network duration logging (2,100ms - 2,900ms per successful LLM call). Out of 70 test cases, 68 invoked the Gemini API.
+
+2. Model Cascade & Fallback Mechanism:
+   - Cascade List: [PRIMARY_LLM_MODEL, FALLBACK_LLM_MODEL, 'gemini-flash-lite-latest', 'gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.5-flash-lite'].
+   - Retry Backoff: Implements exponential backoff on HTTP 429/503 (delay starts at 800ms, max 2 retries per model).
+   - Hardcoded Fallback Flaw: When all LLM models fail or timeout, synthesizeCurriculumFallback() is called. This fallback contains hardcoded Grade 7 responses and URLs for 'metal spoon' (SCI-07-HEAT-04) and 'photosynthesis' (SCI-07-NUTR-01), serving incorrect grade material during outages.
+
+3. Prompt Augmentation & Context Injection:
+   - System instruction enforces JSON schema: { answer, socratic_follow_up, remediation_mode_active, detected_learning_objective_id, citations }.
+   - Temperature is set to 0.2 for strict factual grounding.
+   - Response parsing cleans markdown code fences (```json ... ```) and validates schema presence before returning to controller.
+
+4. Bypassed API Invocations:
+   - When retrieveRelevantChunks returns isOutOfSyllabus: true or 0 chunks exceeding MIN_RELEVANCE_THRESHOLD (0.78), the backend returns an out-of-syllabus refusal payload immediately without invoking Gemini API (observed on TC-WORD-06 and TC-CONT-02; latency ~560-608ms).
+
+--------------------------------------------------
+SECTION 4: RAG PIPELINE AUDIT
+--------------------------------------------------
+
+1. Document Chunking & Ingestion Strategy:
+   - Raw Source: ingestion/raw_pdfs_data/class_9_science.txt (675,382 bytes, 16,789 lines).
+   - Text parsing: ingestion/scripts/ingest_txt_curriculum.js splits text into chapters, removes running headers, and chunks by words.
+   - Chunk Parameters: TARGET_CHUNK_WORDS = 320, MAX_CHUNK_WORDS = 420, OVERLAP_WORDS = 40.
+   - Chunk Registry: 13 chapters ingested for Class 9 Science (320 chunks total, average 25 chunks/chapter).
+   - Defect: Heuristic difficulty tier assignment (index <= 3 foundational, index >= 15 advanced) rather than pedagogical rubric. Learning objective IDs are arbitrary chunk counters (e.g. SCI-09-CELL-01 to 28) rather than official NCERT curriculum codes.
+
+2. Embedding Generation:
+   - Model: 'gemini-embedding-001' at 768 dimensions.
+   - Batch ingestion and runtime embedding in embedQueryWithRetry() both use outputDimensionality: 768.
+   - Exponential retry on 429 rate limit is properly implemented in vectorSearchService.js.
+
+3. Vector Index & Metadata Filtering:
+   - Index Name: 'vector_index' on MongoDB Atlas collection 'curriculum_chunks'.
+   - Index Definition: 768 dimensions, cosine similarity. Filter paths: metadata.grade_level, metadata.subject, metadata.learning_objective_id, metadata.difficulty_tier.
+   - Pre-Filtering Stage: Dynamic pipeline filters on {'metadata.subject': 'Science', 'metadata.grade_level': 9}. Verified operational in MongoDB Atlas aggregation.
+
+4. Retrieval Score Threshold Problem:
+   - MIN_RELEVANCE_THRESHOLD is set to 0.78 in vectorSearchService.js.
+   - Atlas Vector Search normalizes cosine similarity to (1 + cos)/2.
+   - While in-syllabus questions typically score 0.81 - 0.88, casual phrasing ('yo bro why does ice float on water man' -> 0.7739) or short follow-ups ('Explain its formula' -> 0.7787) drop just below 0.78, causing false out-of-syllabus rejections.
+
+5. Prerequisite Remediation Data Gap:
+   - In adaptiveFilterService.js, student mastery < 0.50 triggers expansion to prerequisiteGrade = currentGrade - 1.
+   - For Grade 9 students, this searches grades [8, 9].
+   - MongoDB Atlas collection contains 320 Grade 9 chunks and 10 Grade 7 chunks, but ZERO Grade 8 chunks. Prerequisite remediation for Grade 9 is completely non-functional.
+
+--------------------------------------------------
+SECTION 5: NUMERICAL PROBLEM-SOLVING FAILURES
+--------------------------------------------------
+
+Total Numerical Tests Executed: 17
+Passed: 0
+Failed: 17
+Failure Rate: 100%
+
+All numerical test failures are documented below:
+
+1. Question: "A car travels 120 metres in 10 seconds. Calculate its speed."
+   Expected: Distance = 120 m, time = 10 s; speed = 120 / 10 = 12 m/s.
+   Actual: Chatbot explained definition of average speed, gave no numbers, and asked student to set up division in follow-up.
+   Root Cause: Socratic Anti-Cheating rule withheld direct numerical answer.
+
+2. Question: "A body starts from rest and accelerates uniformly at 2 m/s² for 5 seconds. Calculate its final velocity and distance travelled."
+   Expected: u = 0, a = 2 m/s², t = 5 s. v = 10 m/s; s = 25 m.
+   Actual: Chatbot explained kinematic equations conceptually and asked student to substitute values in follow-up.
+   Root Cause: Socratic Anti-Cheating rule withheld multi-step calculation.
+
+3. Question: "Convert 72 km/h into metres per second."
+   Expected: 72 * (5/18) = 20 m/s.
+   Actual: Chatbot explained 5/18 factor rule and asked student to multiply 72 by 5 and divide by 18 in follow-up.
+   Root Cause: Socratic Anti-Cheating rule withheld unit conversion computation.
+
+4. Question: "A car travels a certain distance. Calculate its speed."
+   Expected: Recognize missing distance and time; prompt student to provide missing variables.
+   Actual: "My approved textbook passages do not cover this specific detail yet. Let's focus on what we have in the chapter."
+   Root Cause: Zero-Hallucination guardrail refused question because abstract scenario wasn't in textbook chunks.
+
+5. Question: "A train starts from a railway station and moves with a uniform acceleration of 0.2 m/s² for 5 minutes. Find its speed in km/h and distance in km."
+   Expected: u = 0, a = 0.2 m/s², t = 300 s. v = 60 m/s = 216 km/h; s = 9000 m = 9 km.
+   Actual: "My approved textbook passages do not cover this specific detail yet."
+   Root Cause: Zero-Hallucination guardrail refused numerical problem because specific problem statement was absent from chunks.
+
+6. Question: "A stone is thrown vertically upward with a velocity of 5 m/s. If the acceleration of the stone during its motion is 10 m/s² in the downward direction, what will be the height attained by the stone and how much time will it take to reach there?"
+   Expected: u = 5 m/s, v = 0, a = -10 m/s². t = 0.5 s; s = 1.25 m.
+   Actual: "My approved textbook passages do not cover this specific detail yet."
+   Root Cause: Zero-Hallucination guardrail refused question; chunks lack upward stone retardation problem.
+
+7. Question: "An object travels 16 m in 4 s and then another 16 m in 2 s. What is the average speed of the object?"
+   Expected: Total distance = 32 m, total time = 6 s. Average speed = 32 / 6 = 5.33 m/s.
+   Actual: Explained average speed formula; asked student to calculate sum of distance and time.
+   Root Cause: Socratic Anti-Cheating rule withheld calculation.
+
+8. Question: "Which would require a greater force – accelerating a 2 kg mass at 5 m/s² or a 4 kg mass at 2 m/s²?"
+   Expected: F1 = 10 N, F2 = 8 N; accelerating 2 kg mass at 5 m/s² requires greater force.
+   Actual: Explained F = ma; asked student to multiply both pairs and compare numbers.
+   Root Cause: Socratic Anti-Cheating rule withheld comparative calculation.
+
+9. Question: "A constant force acts on an object of mass 5 kg for a duration of 2 s. It increases the object's velocity from 3 m/s to 7 m/s. Find the magnitude of the applied force."
+   Expected: a = (7-3)/2 = 2 m/s². F = 5 * 2 = 10 N.
+   Actual: Explained Newton's second law conceptually; asked student to find acceleration first.
+   Root Cause: Socratic Anti-Cheating rule withheld multi-step calculation.
+
+10. Question: "Calculate the momentum of a toy car of mass 200 g moving with a velocity of 5 m/s."
+    Expected: m = 0.2 kg, v = 5 m/s; p = 1 kg·m/s.
+    Actual: "My approved textbook passages do not cover this specific detail yet."
+    Root Cause: Zero-Hallucination guardrail refused question because momentum of toy car wasn't in chunks.
+
+11. Question: "A force of 7 N acts on an object. The displacement is 8 m in the direction of the force. What is the work done?"
+    Expected: W = 7 * 8 = 56 Joules.
+    Actual: Explained Work = Force x Displacement; asked student to multiply 7 by 8 in follow-up.
+    Root Cause: Socratic Anti-Cheating rule withheld multiplication step.
+
+12. Question: "An object of mass 15 kg is moving with a uniform velocity of 4 m/s. What is the kinetic energy possessed by the object?"
+    Expected: KE = 0.5 * 15 * 16 = 120 Joules.
+    Actual: Explained KE = 1/2 m v²; asked student to substitute values in follow-up.
+    Root Cause: Socratic Anti-Cheating rule withheld calculation.
+
+13. Question: "A car with a mass of 1000 kg travelling at 20 m/s has a red paint finish and carries 2 passengers weighing 120 kg total. Calculate the kinetic energy of just the car alone."
+    Expected: Ignore red paint and passengers; KE = 0.5 * 1000 * 400 = 200,000 J (200 kJ).
+    Actual: Correctly noted that red paint and passengers should be ignored, but refused to compute 200,000 J.
+    Root Cause: Socratic Anti-Cheating rule withheld final answer.
+
+14. Question: "Find the energy in joules consumed in 10 hours by four 500 W electric lamps."
+    Expected: Total power = 2000 W; time = 36,000 s; Energy = 7.2 * 10^7 J (20 kWh).
+    Actual: Explained Energy = Power x Time; asked student to compute total power in follow-up.
+    Root Cause: Socratic Anti-Cheating rule withheld energy calculation.
+
+15. Question: "A sound wave has a frequency of 2 kHz and wavelength 35 cm. How long will it take to travel 1.5 km?"
+    Expected: f = 2000 Hz, λ = 0.35 m; v = 700 m/s; t = 1500 / 700 = 2.14 s.
+    Actual: Stated speed = wavelength x frequency; asked student to compute speed first without solving.
+    Root Cause: Socratic Anti-Cheating rule withheld calculation.
+
+16. Question: "Calculate the molecular mass of nitric acid, HNO3. (Atomic masses: H=1 u, N=14 u, O=16 u)"
+    Expected: 1 + 14 + (3 * 16) = 63 u.
+    Actual: Explained how atomic masses are added; asked student to calculate sum in follow-up.
+    Root Cause: Socratic Anti-Cheating rule withheld molecular mass summation.
+
+17. Question: "How many moles are present in 52 g of Helium (He)? (Atomic mass of He = 4 u)"
+    Expected: n = 52 / 4 = 13 moles.
+    Actual: "My approved textbook passages do not cover this specific detail yet."
+    Root Cause: Zero-Hallucination guardrail refused question because mole concept was omitted from NEP 2020 textbook.
+
+--------------------------------------------------
+SECTION 6: THEORETICAL EXPLANATION FAILURES
+--------------------------------------------------
+
+1. Question: "Why does evaporation cause cooling?"
+   Failure Type: Erroneous refusal of fundamental curriculum concept.
+   Actual Response: "My approved textbook passages do not cover this specific detail yet. Let's focus on what we have in the chapter about separating mixtures like acetone and water using distillation..."
+   Root Cause: NEP 2020 'Exploration' textbook omitted 'Matter in Our Surroundings' where cooling via latent heat was originally taught.
+
+2. Question: "Why do wet clothes dry faster on a windy day?"
+   Failure Type: Erroneous refusal of basic everyday science application.
+   Actual Response: "My approved textbook passages do not cover this specific detail yet. Let's focus on what we have in the chapter about how winds are formed through the uneven heating of the Earth's surface..."
+   Root Cause: Passages in Chapter 5 mention evaporation in separation context only; LLM refused to apply principles to clothes drying.
+
+3. Question: "Why do astronauts appear weightless in space even though Earth's gravity still acts on them?"
+   Failure Type: Erroneous refusal of standard gravitation/free-fall application.
+   Actual Response: "My approved textbook passages do not cover this specific detail yet. Let's focus on what we have in the chapter."
+   Root Cause: The NEP 2020 edition lacks a dedicated Gravitation chapter, preventing the bot from explaining free-fall physics.
+
+4. Question: "Explain how temperature, surface area, humidity, and wind speed simultaneously influence the rate of evaporation."
+   Failure Type: Failure to synthesize multi-variable conceptual explanation.
+   Actual Response: "My approved textbook passages do not cover this specific detail yet... Would you like to explore how solar radiation causes water to evaporate from oceans?"
+   Root Cause: Multi-variable evaporation factors were deleted in the NEP 2020 curriculum text.
+
+5. Question: "Why are lysosomes known as suicide bags of the cell?"
+   Failure Type: Erroneous refusal of standard NCERT terminology.
+   Actual Response: "My approved textbook passages do not cover this specific detail yet. Let's focus on what we have in the chapter."
+   Root Cause: NEP 2020 textbook renamed the section to 'Lysosomes — The clean-up system' and removed the phrase 'suicide bags'.
+
+--------------------------------------------------
+SECTION 7: RECURRING ROOT CAUSES
+--------------------------------------------------
+
+1. RECURRING ISSUE: Socratic Anti-Cheating Guardrail Conflict
+   - Affected Tests: 12 tests (TC-NUM-01, TC-NUM-02, TC-NUM-03, TC-NUM-07, TC-NUM-08, TC-NUM-09, TC-NUM-11, TC-NUM-12, TC-NUM-13, TC-NUM-14, TC-NUM-15, TC-FORM-01)
+   - Root Cause: Directive 3 in ragTutorService.js forbids outputting final answers or completed mathematical steps for any question classified as a homework/exercise problem.
+   - Impact: 100% failure rate on direct numerical problem solving. Students cannot verify homework calculations or receive step-by-step arithmetic feedback.
+
+2. RECURRING ISSUE: Rigid Zero-Hallucination Refusal Gate
+   - Affected Tests: 8 tests (TC-NUM-04, TC-NUM-05, TC-NUM-06, TC-NUM-10, TC-NUM-17, TC-THEO-01, TC-APP-02, TC-APP-03)
+   - Root Cause: Directive 1 in ragTutorService.js forces the model to emit a boilerplate refusal string whenever the specific real-world context or numerical values in the student's question do not match the exact text in retrieved chunks.
+   - Impact: Chatbot acts like a brittle text matcher rather than an AI tutor capable of applying scientific principles to novel problems.
+
+3. RECURRING ISSUE: Stateless Backend Architecture (Zero Conversational Memory)
+   - Affected Tests: 3 tests (TC-CONT-02, TC-CONT-03, TC-CONT-05)
+   - Root Cause: tutorController.js and ragTutorService.js discard conversation history. Each turn is an isolated API call. Follow-up pronouns ('its', 'this') cannot be resolved during vector search.
+   - Impact: Conversational follow-ups completely break down on turn 2, frequently triggering false out-of-syllabus refusals.
+
+4. RECURRING ISSUE: Vector Search Cutoff Threshold Rigidity (0.78)
+   - Affected Tests: 2 tests (TC-WORD-06, TC-CONT-02)
+   - Root Cause: vectorSearchService.js enforces a hard cutoff at 0.78. Colloquial phrasing and short follow-ups score 0.77 - 0.779, triggering immediate false out-of-syllabus rejections.
+   - Impact: Penalizes students who type informally or conversationally.
+
+5. RECURRING ISSUE: Missing Foundational Textbook Content in Ingested Data Plane
+   - Affected Tests: 6 tests (TC-THEO-01, TC-MULTI-03, TC-FORM-03, TC-QUAL-02, and all Class 8 prerequisite queries)
+   - Root Cause: Ingestion was restricted to the 2024 experimental NEP 2020 'Exploration' textbook which deleted classic NCERT topics (Matter in Our Surroundings, Gravitation, Mole Concept). Class 8 Science was never ingested.
+   - Impact: Inability to support students studying standard CBSE/NCERT curriculum or provide prerequisite remediation.
+
+--------------------------------------------------
+SECTION 8: RECOMMENDED FIX PRIORITIES
+--------------------------------------------------
+
+1. PRIORITY 1 (CRITICAL): Re-Engineer the Socratic Anti-Cheating Guardrail
+   - File: server/src/services/ragTutorService.js
+   - Action: Differentiate between requests for worked examples/numerical calculations vs outright homework answers. Allow the tutor to show full calculations with formulas, substitutions, and units, while generating a follow-up practice problem in socratic_follow_up.
+
+2. PRIORITY 2 (CRITICAL): Loosen Zero-Hallucination Guardrail for Scientific Application
+   - File: server/src/services/ragTutorService.js
+   - Action: Update Directive 1 to explicitly instruct the model: 'Apply formulas, physical laws, and definitions from the passages to solve numerical problems and real-world scenarios posed by the student, even if the student's specific numerical values or everyday examples are not mentioned in the passages.'
+
+3. PRIORITY 3 (HIGH): Implement Conversational Memory & Contextual Query Condensation
+   - Files: server/src/controllers/tutorController.js, server/src/services/ragTutorService.js, client/src/components/TutorView.jsx
+   - Action: Update /api/tutor/ask to accept conversationHistory. In ragTutorService, rewrite ambiguous follow-up queries (e.g. 'Explain its formula' -> 'Explain acceleration formula') before executing Atlas Vector Search.
+
+4. PRIORITY 4 (HIGH): Calibrate Atlas Vector Search Relevance Threshold
+   - File: server/src/services/vectorSearchService.js
+   - Action: Lower MIN_RELEVANCE_THRESHOLD from 0.78 to 0.72 - 0.74, or implement lightweight query cleaning to strip conversational filler words ('yo bro', 'pls', 'hey') before embedding.
+
+5. PRIORITY 5 (HIGH): Ingest Class 8 Science & Standard NCERT Supplementary Chunks
+   - Files: ingestion/scripts/ingest_txt_curriculum.js, MongoDB Atlas curriculum_chunks
+   - Action: Ingest NCERT Class 8 Science to fulfill AGENTS.md Functional Pillar 3 (Prerequisite Fallback). Ingest standard NCERT Class 9 chapters for Gravitation, Matter in Our Surroundings, and Mole Concept.
+
+6. PRIORITY 6 (MEDIUM): Eliminate Hardcoded Grade 7 Artifacts in Fallback & UI
+   - Files: server/src/services/ragTutorService.js, client/src/components/TutorView.jsx
+   - Action: Remove hardcoded 'metal spoon' and 'photosynthesis' Grade 7 shortcuts in synthesizeCurriculumFallback and CURRICULUM_STARTER_FALLBACKS. Fix TutorView.jsx line 579 citation fallback from 7 to selectedGrade.
+
+7. PRIORITY 7 (LOW): Enhance Mathematical and Chemical Formatting in Frontend
+   - File: client/src/utils/textFormatter.jsx
+   - Action: Add regex support in cleanStudentMath for chemical subscripts (H₂O, CO₂, Ca(OH)₂) and scientific notation superscripts (10²³).
+
+--------------------------------------------------
+SECTION 9: FINAL TESTING CONCLUSION
+--------------------------------------------------
+
+1. Major Weaknesses Discovered:
+   - Numerical Problem Solving is completely non-functional (0% pass rate) due to the Socratic Anti-Cheating guardrail suppressing final calculations and the Zero-Hallucination guardrail rejecting unmentioned numbers.
+   - Conversational continuity collapses after turn 1 because the backend is completely stateless.
+   - Casual or slang wording triggers false out-of-syllabus rejections due to an overly high 0.78 cosine threshold.
+   - Classic NCERT topics (Gravitation, Mole Concept, Evaporation Cooling) are missing from the data plane.
+
+2. Most Frequently Failing Components:
+   - Socratic Anti-Cheating Prompt Directive (12 failures)
+   - Zero-Hallucination Refusal Directive (8 failures)
+   - Stateless Backend Controller (3 failures)
+   - Atlas Vector Search Relevance Cutoff (2 failures)
+
+3. Verification Summaries:
+   - Gemini API Integration: VERIFIED. 68/70 calls successfully invoked Google Gemini API with valid JSON output.
+   - RAG Pipeline: OPERATIONAL BUT IMPAIRED. MongoDB Atlas $vectorSearch executes properly, but suffers from threshold brittleness, syllabus data gaps, and stateless query embedding.
+   - Numerical Reliability: ZERO. Chatbot refuses to compute final answers.
+   - Theoretical Answer Quality: HIGH WHEN DIRECTLY GROUNDED. When questions match textbook concepts without numbers or slang, explanations are clear, encouraging, and pedagogically sound.
+
+4. Developer Focus:
+   The immediate priority for developers is NOT model selection or embedding tuning, but guardrail calibration: relaxing the Socratic anti-cheating rule on math calculations, permitting deductive reasoning in prompt directives, and adding conversation history to the API.
+
+==================================================
+END OF REPORT
+==================================================

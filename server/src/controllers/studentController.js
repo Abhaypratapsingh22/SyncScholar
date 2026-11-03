@@ -77,6 +77,41 @@ export async function getStudentProfile(req, res) {
   }
 }
 
+/**
+ * PATCH /api/student/grade
+ * Updates student's selected grade level for multi-grade classrooms.
+ */
+export async function updateStudentGrade(req, res) {
+  try {
+    const student = req.user;
+    const { grade } = req.body;
+    const numGrade = parseInt(grade, 10);
+
+    if (isNaN(numGrade) || numGrade < 1 || numGrade > 12) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid grade provided. Must be between 1 and 12.',
+      });
+    }
+
+    student.current_grade = numGrade;
+    await student.save();
+
+    return res.status(200).json({
+      success: true,
+      current_grade: numGrade,
+      message: `Grade successfully updated to Class ${numGrade}`,
+    });
+  } catch (error) {
+    console.error('Update Grade Error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update student grade.',
+    });
+  }
+}
+
 export default {
   getStudentProfile,
+  updateStudentGrade,
 };

@@ -39,7 +39,7 @@
       "subject": "Mathematics",
       "chapter_number": 4,
       "chapter_title": "Exploring Algebraic Identities",
-      "learning_objective_prefix": "MATH-09-ALG",
+      "learning_objective_prefix": "MATH-09-IDENT",
       "source_url": "https://ncert.nic.in/textbook/pdf/iemh104.pdf"
     },
     {
@@ -49,7 +49,7 @@
       "subject": "Mathematics",
       "chapter_number": 5,
       "chapter_title": "I'm Up and Down, and Round and Round",
-      "learning_objective_prefix": "MATH-09-CIRC",
+      "learning_objective_prefix": "MATH-09-CURV",
       "source_url": "https://ncert.nic.in/textbook/pdf/iemh105.pdf"
     },
     {
@@ -59,7 +59,7 @@
       "subject": "Mathematics",
       "chapter_number": 6,
       "chapter_title": "Measuring Space: Perimeter and Area",
-      "learning_objective_prefix": "MATH-09-AREA",
+      "learning_objective_prefix": "MATH-09-MENS",
       "source_url": "https://ncert.nic.in/textbook/pdf/iemh106.pdf"
     },
     {
@@ -78,7 +78,7 @@
       "grade_level": 9,
       "subject": "Mathematics",
       "chapter_number": 8,
-      "chapter_title": "Predicting What Comes Next: Exploring Sequences and Progressions",
+      "chapter_title": "Sequences and Progressions",
       "learning_objective_prefix": "MATH-09-SEQ",
       "source_url": "https://ncert.nic.in/textbook/pdf/iemh108.pdf"
     },
@@ -91,6 +91,136 @@
       "chapter_title": "Heat",
       "learning_objective_prefix": "SCI-07-HEAT",
       "source_url": "https://ncert.nic.in/textbook/pdf/gesc104.pdf"
+    },
+    {
+      "file_path": "raw_pdfs_data/class_9_science.txt",
+      "source_curriculum": "NCERT",
+      "grade_level": 9,
+      "subject": "Science",
+      "chapter_number": 1,
+      "chapter_title": "Exploration: Entering the World of Secondary Science",
+      "learning_objective_prefix": "SCI-09-EXPL",
+      "source_url": "https://ncert.nic.in/textbook.php?jesc1=1-13"
+    },
+    {
+      "file_path": "raw_pdfs_data/class_9_science.txt",
+      "source_curriculum": "NCERT",
+      "grade_level": 9,
+      "subject": "Science",
+      "chapter_number": 2,
+      "chapter_title": "Cell: The Building Block of Life",
+      "learning_objective_prefix": "SCI-09-CELL",
+      "source_url": "https://ncert.nic.in/textbook.php?jesc1=2-13"
+    },
+    {
+      "file_path": "raw_pdfs_data/class_9_science.txt",
+      "source_curriculum": "NCERT",
+      "grade_level": 9,
+      "subject": "Science",
+      "chapter_number": 3,
+      "chapter_title": "Tissues in Action",
+      "learning_objective_prefix": "SCI-09-TISS",
+      "source_url": "https://ncert.nic.in/textbook.php?jesc1=3-13"
+    },
+    {
+      "file_path": "raw_pdfs_data/class_9_science.txt",
+      "source_curriculum": "NCERT",
+      "grade_level": 9,
+      "subject": "Science",
+      "chapter_number": 4,
+      "chapter_title": "Describing Motion Around Us",
+      "learning_objective_prefix": "SCI-09-MOTI",
+      "source_url": "https://ncert.nic.in/textbook.php?jesc1=4-13"
+    },
+    {
+      "file_path": "raw_pdfs_data/class_9_science.txt",
+      "source_curriculum": "NCERT",
+      "grade_level": 9,
+      "subject": "Science",
+      "chapter_number": 5,
+      "chapter_title": "Exploring Mixtures and their Separation",
+      "learning_objective_prefix": "SCI-09-MIXT",
+      "source_url": "https://ncert.nic.in/textbook.php?jesc1=5-13"
+    },
+    {
+      "file_path": "raw_pdfs_data/class_9_science.txt",
+      "source_curriculum": "NCERT",
+      "grade_level": 9,
+      "subject": "Science",
+      "chapter_number": 6,
+      "chapter_title": "How Forces Affect Motion",
+      "learning_objective_prefix": "SCI-09-FORC",
+      "source_url": "https://ncert.nic.in/textbook.php?jesc1=6-13"
+    },
+    {
+      "file_path": "raw_pdfs_data/class_9_science.txt",
+      "source_curriculum": "NCERT",
+      "grade_level": 9,
+      "subject": "Science",
+      "chapter_number": 7,
+      "chapter_title": "Work, Energy, and Simple Machines",
+      "learning_objective_prefix": "SCI-09-WORK",
+      "source_url": "https://ncert.nic.in/textbook.php?jesc1=7-13"
+    },
+    {
+      "file_path": "raw_pdfs_data/class_9_science.txt",
+      "source_curriculum": "NCERT",
+      "grade_level": 9,
+      "subject": "Science",
+      "chapter_number": 8,
+      "chapter_title": "Journey Inside the Atom",
+      "learning_objective_prefix": "SCI-09-ATOM",
+      "source_url": "https://ncert.nic.in/textbook.php?jesc1=8-13"
+    },
+    {
+      "file_path": "raw_pdfs_data/class_9_science.txt",
+      "source_curriculum": "NCERT",
+      "grade_level": 9,
+      "subject": "Science",
+      "chapter_number": 9,
+      "chapter_title": "Atomic Foundations of Matter",
+      "learning_objective_prefix": "SCI-09-MATT",
+      "source_url": "https://ncert.nic.in/textbook.php?jesc1=9-13"
+    },
+    {
+      "file_path": "raw_pdfs_data/class_9_science.txt",
+      "source_curriculum": "NCERT",
+      "grade_level": 9,
+      "subject": "Science",
+      "chapter_number": 10,
+      "chapter_title": "Sound Waves: Characteristics and Applications",
+      "learning_objective_prefix": "SCI-09-SOUN",
+      "source_url": "https://ncert.nic.in/textbook.php?jesc1=10-13"
+    },
+    {
+      "file_path": "raw_pdfs_data/class_9_science.txt",
+      "source_curriculum": "NCERT",
+      "grade_level": 9,
+      "subject": "Science",
+      "chapter_number": 11,
+      "chapter_title": "Reproduction: How Life Continues",
+      "learning_objective_prefix": "SCI-09-REPR",
+      "source_url": "https://ncert.nic.in/textbook.php?jesc1=11-13"
+    },
+    {
+      "file_path": "raw_pdfs_data/class_9_science.txt",
+      "source_curriculum": "NCERT",
+      "grade_level": 9,
+      "subject": "Science",
+      "chapter_number": 12,
+      "chapter_title": "Patterns in Life: Diversity and Classification",
+      "learning_objective_prefix": "SCI-09-DIVE",
+      "source_url": "https://ncert.nic.in/textbook.php?jesc1=12-13"
+    },
+    {
+      "file_path": "raw_pdfs_data/class_9_science.txt",
+      "source_curriculum": "NCERT",
+      "grade_level": 9,
+      "subject": "Science",
+      "chapter_number": 13,
+      "chapter_title": "Earth as a System: Energy, Matter, and Life",
+      "learning_objective_prefix": "SCI-09-EART",
+      "source_url": "https://ncert.nic.in/textbook.php?jesc1=13-13"
     }
   ]
 }

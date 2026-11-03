@@ -128,14 +128,29 @@ export const api = {
     return await request('/student/profile', { method: 'GET' });
   },
 
+  async updateGrade(grade) {
+    return await request('/student/grade', {
+      method: 'PATCH',
+      body: JSON.stringify({ grade }),
+    }).catch(() => null);
+  },
+
   // Adaptive Socratic Doubt Tutor
-  async askTutor({ question, subject = 'Science', learningObjectiveId = null }) {
+  async askTutor({
+    question,
+    subject = 'Science',
+    learningObjectiveId = null,
+    grade = null,
+    conversationHistory = [],
+  }) {
     return await request('/tutor/ask', {
       method: 'POST',
       body: JSON.stringify({
         question,
         subject,
         learningObjectiveId,
+        grade,
+        conversationHistory,
       }),
     });
   },

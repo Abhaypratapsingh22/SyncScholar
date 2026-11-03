@@ -5,7 +5,7 @@
  */
 
 import express from 'express';
-import { getStudentProfile } from '../controllers/studentController.js';
+import { getStudentProfile, updateStudentGrade } from '../controllers/studentController.js';
 import { protect, authorizeRoles } from '../middlewares/authMiddleware.js';
 
 const router = express.Router();
@@ -16,5 +16,12 @@ const router = express.Router();
  * @access  Protected (Student, Admin)
  */
 router.get('/profile', protect, authorizeRoles('student', 'admin'), getStudentProfile);
+
+/**
+ * @route   PATCH /api/student/grade
+ * @desc    Update student's active grade level for multi-grade classroom alignment
+ * @access  Protected (Student, Admin)
+ */
+router.patch('/grade', protect, authorizeRoles('student', 'admin'), updateStudentGrade);
 
 export default router;

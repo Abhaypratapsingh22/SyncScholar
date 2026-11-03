@@ -72,19 +72,31 @@ export function App() {
         // Demo login only enabled when explicit development environment flag is active
         if (import.meta.env.DEV) {
           try {
-            const res = await api.login({
-              roll_number: 'DEMO-G7-HIGH',
-              school_id: 'SCH-DEMO-01',
-              password: 'TestStudent@123',
-            });
+            const savedGrade = saved?.profile?.current_grade || 9;
+            const targetRoll = savedGrade === 7 ? 'DEMO-G7-HIGH' : 'DEMO-G9-HIGH';
+            let res;
+            try {
+              res = await api.login({
+                roll_number: targetRoll,
+                school_id: 'SCH-DEMO-01',
+                password: 'TestStudent@123',
+              });
+            } catch (loginErr) {
+              // Fallback to DEMO-G7-HIGH if DEMO-G9-HIGH fails
+              res = await api.login({
+                roll_number: 'DEMO-G7-HIGH',
+                school_id: 'SCH-DEMO-01',
+                password: 'TestStudent@123',
+              });
+            }
 
             if (res?.success && res.user) {
               const profile = {
                 id: res.user.id || res.user._id,
                 name: res.user.name,
-                current_grade: res.user.current_grade || 7,
+                current_grade: res.user.current_grade || savedGrade || 9,
                 school_id: res.user.school_id || 'SCH-DEMO-01',
-                roll_number: res.user.roll_number || 'DEMO-G7-HIGH',
+                roll_number: res.user.roll_number || targetRoll,
               };
               setStudent(profile);
               await saveLocalStudentSession({ profile, token: res.token });
@@ -115,6 +127,20 @@ export function App() {
     setStudent(newStudent);
   };
 
+  const handleUpdateGrade = async (newGrade) => {
+    const num = Number(newGrade);
+    setStudent((prev) => {
+      const updated = { ...(prev || {}), current_grade: num };
+      saveLocalStudentSession({ profile: updated, token: getAuthToken() }).catch(() => {});
+      return updated;
+    });
+    try {
+      await api.updateGrade(num);
+    } catch (e) {
+      console.warn('Could not update grade on server:', e);
+    }
+  };
+
   const handleLogout = async () => {
     setStudent(null);
     setAuthToken(null);
@@ -130,6 +156,7 @@ export function App() {
         onTriggerSync={handleTriggerSync}
         onOpenAuth={() => setAuthModalOpen(true)}
         onOpenMastery={() => setMasteryModalOpen(true)}
+        onUpdateGrade={handleUpdateGrade}
         currentTab={currentTab}
         onSelectTab={setCurrentTab}
       />
@@ -141,11 +168,12 @@ export function App() {
             student={student}
             syncState={syncState}
             onSelectTab={setCurrentTab}
+            onUpdateGrade={handleUpdateGrade}
           />
         )}
 
         {currentTab === 'assessment' && (
-          <AssessmentView student={student} syncState={syncState} />
+          <AssessmentView student={student} syncState={syncState} onUpdateGrade={handleUpdateGrade} />
         )}
       </main>
 

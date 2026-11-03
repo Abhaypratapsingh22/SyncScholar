@@ -46,20 +46,106 @@ import {
 const TOPIC_PRESETS = [
   {
     subject: 'Science',
+    loId: 'SCI-09-SOUN-01',
+    grade: 9,
+    title: 'Sound Waves & Speed of Sound (Class 9 - Ch. 10)',
+  },
+  {
+    subject: 'Science',
+    loId: 'SCI-09-CELL-01',
+    grade: 9,
+    title: 'Cell: Plasma Membrane & Organelles (Class 9 - Ch. 2)',
+  },
+  {
+    subject: 'Science',
+    loId: 'SCI-09-MOTI-01',
+    grade: 9,
+    title: 'Describing Motion Around Us (Class 9 - Ch. 4)',
+  },
+  {
+    subject: 'Science',
+    loId: 'SCI-09-MIXT-01',
+    grade: 9,
+    title: 'Mixtures & Separation Methods (Class 9 - Ch. 5)',
+  },
+  {
+    subject: 'Science',
     loId: 'SCI-07-HEAT-04',
-    title: 'Heat Conduction & Insulators (Class 7)',
+    grade: 7,
+    title: 'Heat Conduction & Insulators (Class 7 - Ch. 4)',
   },
   {
     subject: 'Science',
     loId: 'SCI-07-NUTR-01',
-    title: 'Nutrition in Plants & Photosynthesis (Class 7)',
-  },
-  {
-    subject: 'Mathematics',
-    loId: 'MAT-07-FRAC-02',
-    title: 'Fractions & Rational Numbers (Class 7)',
+    grade: 7,
+    title: 'Nutrition in Plants & Photosynthesis (Class 7 - Ch. 1)',
   },
 ];
+
+const OFFLINE_FALLBACK_CLASS9_SOUND = {
+  subject: 'Science',
+  grade_level: 9,
+  learning_objective_id: 'SCI-09-SOUN-01',
+  topic_query: 'Sound Waves and Wavelength',
+  questions: [
+    {
+      question: 'A source produces a sound wave of wavelength 3.44 m traveling at a speed of 344 m/s. What is its time period?',
+      options: [
+        '0.01 seconds',
+        '0.10 seconds',
+        '1.00 seconds',
+        '10.0 seconds',
+      ],
+      correct_index: 0,
+      explanation: 'According to NCERT Class 9 Science Chapter 10 (Sound Waves), wave speed v = distance / time = λ / T. Therefore, T = λ / v = 3.44 m / 344 m s-1 = 0.01 s.',
+      learning_objective_id: 'SCI-09-SOUN-01',
+    },
+    {
+      question: 'Which wave characteristic determines the pitch of a sound?',
+      options: [
+        'Amplitude',
+        'Frequency',
+        'Speed',
+        'Wavelength only',
+      ],
+      correct_index: 1,
+      explanation: 'As described in NCERT Class 9 Science Chapter 10, the pitch of a sound depends on its frequency: the faster the vibration of the source, the higher is the frequency and higher is the pitch.',
+      learning_objective_id: 'SCI-09-SOUN-01',
+    },
+    {
+      question: 'Through which medium does sound wave travel fastest?',
+      options: [
+        'Solids',
+        'Liquids',
+        'Gases',
+        'Vacuum',
+      ],
+      correct_index: 0,
+      explanation: 'Sound travels fastest through solids because particles are closely packed and transfer vibrational energy rapidly. Sound cannot travel through vacuum at all.',
+      learning_objective_id: 'SCI-09-SOUN-01',
+    },
+  ],
+  flashcards: [
+    {
+      front: 'What is the relationship between Wave Speed (v), Frequency (ν), and Wavelength (λ)?',
+      back: 'Wave speed equals frequency multiplied by wavelength: v = ν × λ. Since time period T = 1/ν, wave speed can also be expressed as v = λ / T. (NCERT Class 9 Science, Ch. 10, p. 189)',
+      chapter_title: 'Sound Waves',
+      page_number: 189,
+    },
+    {
+      front: 'Why cannot sound travel through a vacuum?',
+      back: 'Sound is a mechanical wave that requires a material medium (solid, liquid, or gas) to propagate compressions and rarefactions. In vacuum there are no particles to transmit vibrations. (NCERT Class 9 Science, Ch. 10, p. 184)',
+      chapter_title: 'Sound Waves',
+      page_number: 184,
+    },
+    {
+      front: 'What is an Echo and what is the minimum distance required to hear it?',
+      back: 'An echo is the sensation of reflected sound heard after the direct sound. To hear a distinct echo at 22°C in air, the reflecting obstacle must be at least 17.2 meters away. (NCERT Class 9 Science, Ch. 10, p. 192)',
+      chapter_title: 'Sound Waves',
+      page_number: 192,
+    },
+  ],
+};
 
 // Fallback high-quality offline starter deck in case school starts completely offline
 const OFFLINE_FALLBACK_DECK = {
@@ -127,11 +213,14 @@ const OFFLINE_FALLBACK_DECK = {
   ],
 };
 
-export function AssessmentView({ student, syncState }) {
+export function AssessmentView({ student, syncState, onUpdateGrade }) {
   const [activeSubTab, setActiveSubTab] = useState('quiz'); // 'quiz' | 'flashcards'
-  const [selectedTopic, setSelectedTopic] = useState(TOPIC_PRESETS[0]);
+  const defaultTopic = (student?.current_grade === 9 || !student?.current_grade)
+    ? (TOPIC_PRESETS.find((t) => t.grade === 9) || TOPIC_PRESETS[0])
+    : (TOPIC_PRESETS.find((t) => t.grade === student.current_grade) || TOPIC_PRESETS[0]);
+  const [selectedTopic, setSelectedTopic] = useState(defaultTopic);
   const [loading, setLoading] = useState(false);
-  const [assessmentData, setAssessmentData] = useState(OFFLINE_FALLBACK_DECK);
+  const [assessmentData, setAssessmentData] = useState(OFFLINE_FALLBACK_CLASS9_SOUND);
   const [feedbackMessage, setFeedbackMessage] = useState(null);
 
   // Quiz Mode State
@@ -146,6 +235,7 @@ export function AssessmentView({ student, syncState }) {
   const [masteredCards, setMasteredCards] = useState(new Set());
 
   const isOnline = syncState?.isOnline ?? true;
+  const currentGrade = selectedTopic.grade || student?.current_grade || 9;
 
   // Hydrate local cache or fallback for the selected topic
   useEffect(() => {
@@ -158,10 +248,26 @@ export function AssessmentView({ student, syncState }) {
           setAssessmentData({
             subject: selectedTopic.subject,
             learning_objective_id: selectedTopic.loId,
-            grade_level: student?.current_grade || 7,
+            grade_level: currentGrade,
             questions: cachedQuiz?.questions || [],
             flashcards: cachedCards?.cards || [],
           });
+        } else if (selectedTopic.loId === 'SCI-09-SOUN-01') {
+          await cacheQuiz({
+            id: `${selectedTopic.subject}_${selectedTopic.loId}`,
+            subject: selectedTopic.subject,
+            learning_objective_id: selectedTopic.loId,
+            grade_level: 9,
+            questions: OFFLINE_FALLBACK_CLASS9_SOUND.questions,
+          });
+          await cacheFlashcardDeck({
+            id: `${selectedTopic.subject}_${selectedTopic.loId}`,
+            subject: selectedTopic.subject,
+            learning_objective_id: selectedTopic.loId,
+            grade_level: 9,
+            cards: OFFLINE_FALLBACK_CLASS9_SOUND.flashcards,
+          });
+          setAssessmentData(OFFLINE_FALLBACK_CLASS9_SOUND);
         } else if (selectedTopic.loId === 'SCI-07-HEAT-04') {
           // Pre-cache fallback deck for instant offline use only for SCI-07-HEAT-04
           await cacheQuiz({
@@ -184,7 +290,7 @@ export function AssessmentView({ student, syncState }) {
           setAssessmentData({
             subject: selectedTopic.subject,
             learning_objective_id: selectedTopic.loId,
-            grade_level: student?.current_grade || 7,
+            grade_level: currentGrade,
             questions: [],
             flashcards: [],
           });
@@ -194,7 +300,7 @@ export function AssessmentView({ student, syncState }) {
       }
     }
     loadCache();
-  }, [selectedTopic, student]);
+  }, [selectedTopic, student, currentGrade]);
 
   const handleGenerateAssessment = async () => {
     if (!isOnline) {
@@ -217,7 +323,7 @@ export function AssessmentView({ student, syncState }) {
         subject: selectedTopic.subject,
         learning_objective_id: selectedTopic.loId,
         topic_query: selectedTopic.title,
-        grade_level: student?.current_grade || 7,
+        grade_level: currentGrade,
       });
 
       if (response?.success && response?.data) {
@@ -228,14 +334,14 @@ export function AssessmentView({ student, syncState }) {
           id: cacheId,
           subject: selectedTopic.subject,
           learning_objective_id: selectedTopic.loId,
-          grade_level: student?.current_grade || 7,
+          grade_level: currentGrade,
           questions: response.data.questions || [],
         });
         await cacheFlashcardDeck({
           id: cacheId,
           subject: selectedTopic.subject,
           learning_objective_id: selectedTopic.loId,
-          grade_level: student?.current_grade || 7,
+          grade_level: currentGrade,
           cards: response.data.flashcards || [],
         });
 
@@ -256,13 +362,19 @@ export function AssessmentView({ student, syncState }) {
         setAssessmentData({
           subject: selectedTopic.subject,
           learning_objective_id: selectedTopic.loId,
-          grade_level: student?.current_grade || 7,
+          grade_level: currentGrade,
           questions: cachedQuiz?.questions || [],
           flashcards: cachedCards?.cards || [],
         });
         setFeedbackMessage({
           type: 'info',
           text: 'Using cached diagnostic deck from your offline storage.',
+        });
+      } else if (selectedTopic.loId === 'SCI-09-SOUN-01') {
+        setAssessmentData(OFFLINE_FALLBACK_CLASS9_SOUND);
+        setFeedbackMessage({
+          type: 'info',
+          text: 'Loaded verified Class 9 Sound Waves curriculum starter deck for offline practice.',
         });
       } else if (selectedTopic.loId === 'SCI-07-HEAT-04') {
         setAssessmentData(OFFLINE_FALLBACK_DECK);
@@ -274,7 +386,7 @@ export function AssessmentView({ student, syncState }) {
         setAssessmentData({
           subject: selectedTopic.subject,
           learning_objective_id: selectedTopic.loId,
-          grade_level: student?.current_grade || 7,
+          grade_level: currentGrade,
           questions: [],
           flashcards: [],
         });
@@ -326,7 +438,7 @@ export function AssessmentView({ student, syncState }) {
       student_id: student?.id || student?._id || 'offline_student',
       learning_objective_id: selectedTopic.loId,
       subject: selectedTopic.subject,
-      grade_level: student?.current_grade || 7,
+      grade_level: currentGrade,
       questions: formattedQuestions,
       score: correctCount,
       max_score: questions.length,
@@ -343,7 +455,7 @@ export function AssessmentView({ student, syncState }) {
           client_attempt_id: clientAttemptUuid,
           learning_objective_id: selectedTopic.loId,
           subject: selectedTopic.subject,
-          grade_level: student?.current_grade || 7,
+          grade_level: currentGrade,
           questions: formattedQuestions,
           synced_from_offline: false,
         });

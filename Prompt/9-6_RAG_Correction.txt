@@ -1,0 +1,861 @@
+# Master Technical Prompt: Design an Intelligent PDF Processing, RAG-Based Knowledge Retrieval, and Grade-Aware AI Answering System for SyncScholar
+
+## 1. Project Context and Objective
+
+I am developing an AI-powered educational platform called **SyncScholar**, designed to help students understand academic concepts through an AI assistant that adapts its answers according to their selected educational level, syllabus, and expected knowledge.
+
+I have provided:
+
+- The extracted text containing the same chapter's content.
+
+Your first task is to analyze and compare the original PDF with its extracted text. Identify differences, formatting problems, missing information, structural inconsistencies, and errors introduced during text extraction.
+
+Based on this analysis, design a reusable AI-agent instruction system that can process educational PDFs of different subjects, classes, lengths, and formats.
+
+The system must transform raw PDF content into structured, searchable, and semantically meaningful educational knowledge that can be stored in MongoDB and used by a Retrieval-Augmented Generation (RAG) architecture.
+
+**Important:** The textbook is not intended to be the exclusive source of answers. Its primary purpose is to provide educational context to the AI so that it understands the student's syllabus, expected vocabulary, conceptual depth, and level of understanding.
+
+---
+
+# 2. PDF Analysis and Intelligent Content Structuring
+
+Develop detailed, general-purpose rules that instruct the PDF-processing agent to identify, interpret, clean, and structure educational content correctly.
+
+### 2.1 Identify document hierarchy
+
+The agent must correctly distinguish between:
+
+- Book title
+- Class and subject
+- Chapter number and chapter title
+- Main headings
+- Subheadings
+- Topics and subtopics
+- Paragraphs
+- Definitions
+- Important facts
+- Examples
+- Activities and experiments
+- Questions and exercises
+- Tables and their contents
+- Mathematical and scientific formulas
+- Important notes and highlighted information
+- References and supplementary content
+
+The agent must understand the logical relationship between these elements instead of treating the entire extracted text as one continuous paragraph.
+
+For example:
+
+Chapter 1: Matter in Our Surroundings
+
+1.1 Physical Nature of Matter
+
+1.1.1 Matter is Made Up of Particles
+
+The agent should recognize the chapter, topic, and subtopic hierarchy and maintain these relationships in the final structured output.
+
+### 2.2 Handle figures, images, and captions
+
+The agent must identify figure references such as:
+
+- Fig. 1
+- Fig. 1.4
+- Figure 1.2
+- Fig. 1: Structure of an Atom
+
+Do not store meaningless figure references as independent educational concepts.
+
+However:
+- Preserve useful explanations surrounding the figures.
+- Preserve captions if they contain meaningful educational information.
+- Do not remove text merely because it appears close to a figure.
+- If a diagram contains important information that is not available in the extracted text, flag it as potentially missing visual information rather than inventing its contents.
+
+### 2.3 Handle mathematical and scientific expressions
+
+Accurately interpret and preserve:
+
+- Mathematical equations
+- Chemical equations
+- Scientific formulas
+- Subscripts and superscripts
+- Greek symbols
+- Units and measurements
+- Fractions and powers
+- Inequalities
+- Special mathematical characters
+- Chemical symbols and reactions
+
+For example, preserve:
+
+- H₂O instead of H2O when the original meaning requires a subscript.
+- CO₂ instead of CO2.
+- E = mc² instead of E = mc2.
+- Mathematical expressions in valid LaTeX where appropriate.
+
+Never modify a formula simply to make it easier to store.
+
+Where possible, maintain both a human-readable representation and a machine-readable representation.
+
+### 2.4 Correct PDF extraction problems
+
+The agent must identify and resolve:
+
+- Broken sentences caused by page boundaries.
+- Unnecessary line breaks.
+- Incorrect paragraph separation.
+- Repeated headers and footers.
+- Duplicate content.
+- Incorrect reading order.
+- Missing spaces between words.
+- OCR errors.
+- Unusual Unicode characters.
+- Incorrectly extracted tables.
+- Sentences split across multiple pages.
+
+The agent must not combine unrelated paragraphs or modify the original meaning while cleaning the text.
+
+### 2.5 Preserve educational meaning
+
+The objective is not simply to clean text. The agent must understand the educational purpose of each section.
+
+For example, distinguish between:
+
+- A definition explaining a concept.
+- An example demonstrating the concept.
+- An activity asking students to perform an experiment.
+- A conclusion explaining the result.
+- An exercise testing the student's understanding.
+
+These elements must be represented separately in the structured knowledge base.
+
+---
+
+# 3. Intelligent Chunking Strategy for Large Educational PDFs
+
+Implement a proper chunking strategy to divide large educational documents into smaller, meaningful sections.
+
+A 500-page PDF should not be processed as one enormous text block every time a student asks a question.
+
+Instead, the document must be processed once during ingestion and divided into smaller chunks.
+
+### 3.1 What is chunking?
+
+Chunking is the process of dividing a large document into smaller pieces of text called chunks.
+
+For example:
+
+A 500-page textbook may contain approximately 2,000 or more chunks, depending on its content and structure.
+
+Each chunk should contain a meaningful educational section rather than an arbitrary collection of sentences.
+
+### 3.2 Use structure-aware chunking
+
+Do not divide the document exclusively according to a fixed number of characters.
+
+Prefer a combination of:
+
+1. Chapter-based segmentation.
+2. Heading and subheading identification.
+3. Paragraph-based segmentation.
+4. Semantic segmentation.
+5. Token-based chunk-size limits.
+
+A chunk should ideally contain one complete concept, definition, explanation, example, or closely related group of paragraphs.
+
+For example:
+
+**Document:**
+
+Class 9 Science → Chapter 1 → Matter in Our Surroundings → Physical Nature of Matter.
+
+**Chunk 1:**
+Introduction to matter.
+
+**Chunk 2:**
+Matter is made up of particles.
+
+**Chunk 3:**
+Characteristics of particles of matter.
+
+**Chunk 4:**
+Particles of matter have space between them.
+
+**Chunk 5:**
+Particles of matter are continuously moving.
+
+This makes retrieval more meaningful than dividing the text after every arbitrary number of characters.
+
+### 3.3 Chunk size and overlap
+
+Develop an appropriate chunk-size strategy based on the educational content.
+
+Use token-based chunk sizing rather than assuming that a fixed number of characters equals a fixed number of tokens.
+
+Consider an initial configuration such as:
+
+- Target chunk size: 400–700 tokens.
+- Chunk overlap: 50–100 tokens.
+- Maximum chunk size: configurable according to the embedding model and content type.
+
+These values should be treated as starting points, not universal requirements.
+
+Overlap is important because a concept may continue from one paragraph into another.
+
+However, avoid excessive overlap because it creates duplicate information, increases storage requirements, and can affect retrieval quality.
+
+### 3.4 Preserve contextual metadata in every chunk
+
+Every chunk must retain enough information to identify its original location.
+
+For example:
+
+- Document ID
+- Book name
+- Class
+- Subject
+- Chapter number
+- Chapter title
+- Topic
+- Subtopic
+- Page number or page range
+- Chunk ID
+- Chunk sequence
+- Content type
+- Original source reference
+
+Never store chunks as isolated text without their educational hierarchy.
+
+---
+
+# 4. Embedding Generation: Converting Text into Numerical Representations
+
+After creating meaningful chunks, generate embeddings for each chunk.
+
+### 4.1 What are embeddings?
+
+Embeddings are numerical vector representations of text generated by an embedding model.
+
+They represent semantic information about the text, allowing a system to identify content based on meaning rather than relying only on exact keyword matches.
+
+For example:
+
+Chunk A: "Matter is made up of very small particles."
+
+Chunk B: "All substances consist of tiny particles."
+
+Although the wording is different, both sentences communicate a similar concept.
+
+An embedding model converts these texts into numerical vectors. Semantically similar texts generally have vectors that are close under the chosen similarity metric.
+
+Do not interpret embeddings as simple keyword numbers. They are multidimensional numerical representations learned by an AI model.
+
+### 4.2 Embedding generation workflow
+
+During document ingestion:
+
+1. Extract and clean the PDF text.
+2. Divide the content into meaningful chunks.
+3. Send each chunk to an embedding model.
+4. Receive its numerical vector representation.
+5. Associate the vector with the original chunk and its metadata.
+6. Store the chunk, embedding, and metadata in MongoDB.
+
+Example conceptual representation:
+
+```json
+{
+  "chunk_id": "class9_science_ch1_chunk_001",
+  "content": "Matter is made up of very small particles.",
+  "embedding": [0.124, -0.342, 0.567, 0.891],
+  "metadata": {
+    "class": 9,
+    "subject": "Science",
+    "chapter": 1,
+    "topic": "Matter in Our Surroundings",
+    "subtopic": "Physical Nature of Matter",
+    "page_number": 2,
+    "content_type": "concept"
+  }
+}
+```
+
+The numerical vector above is only an illustrative example. Actual embedding dimensions and values depend on the selected model.
+
+### 4.3 Important embedding rules
+
+The agent and system architecture must ensure:
+
+- Use a suitable embedding model for educational content.
+- Use the same compatible embedding model for document chunks and student queries.
+- Maintain consistent embedding dimensions.
+- Never generate embeddings for empty or meaningless chunks.
+- Avoid unnecessary embedding regeneration when document content has not changed.
+- Track embedding model versions.
+- Re-embed documents when changing to an incompatible embedding model.
+- Batch embedding requests where supported to reduce processing time and API overhead.
+
+Embedding generation should happen during document ingestion, not repeatedly whenever a student submits a question.
+
+---
+
+# 5. MongoDB as the Knowledge and Vector Storage Layer
+
+Use MongoDB as the primary database for storing structured educational content, metadata, chunks, and their embeddings.
+
+The architecture should support MongoDB Atlas Vector Search or an equivalent vector-search implementation.
+
+### 5.1 Suggested database structure
+
+Design a scalable database structure using appropriate collections.
+
+Consider the following collections:
+
+**Collection 1: Documents**
+
+Stores document-level information.
+
+Fields:
+- document_id
+- book_name
+- class
+- subject
+- board
+- total_pages
+- chapters
+- document_version
+- ingestion_status
+
+**Collection 2: Chapters**
+
+Stores chapter-level information.
+
+Fields:
+- chapter_id
+- document_id
+- chapter_number
+- chapter_title
+- class
+- subject
+- topics
+
+**Collection 3: Knowledge Chunks**
+
+Stores the actual educational content and embeddings.
+
+Fields:
+- chunk_id
+- document_id
+- chapter_id
+- content
+- embedding
+- class
+- subject
+- chapter
+- topic
+- subtopic
+- page_number
+- content_type
+- sequence_number
+- embedding_model
+
+You may recommend a different schema if it offers better scalability, query performance, maintainability, or storage efficiency.
+
+Avoid unnecessary duplication of large content across collections.
+
+### 5.2 Vector indexing
+
+Explain how MongoDB Vector Search indexes the embedding vectors.
+
+The vector index should support:
+
+- Vector dimensions matching the embedding model.
+- An appropriate similarity metric, such as cosine similarity.
+- Metadata filtering.
+- Efficient top-K similarity retrieval.
+
+Ensure that the vector index is configured according to the selected embedding model and MongoDB version.
+
+---
+
+# 6. Complete RAG Architecture: Retrieval-Augmented Generation
+
+Implement a Retrieval-Augmented Generation (RAG) pipeline for answering student questions.
+
+Explain and implement the three main stages of RAG:
+
+## R — Retrieval
+
+Retrieval means finding the most relevant information from the stored educational knowledge base.
+
+When a student submits a question, the system should not read the entire textbook again.
+
+Instead, it should retrieve only the relevant chunks.
+
+**Retrieval workflow:**
+
+1. Receive the student's question.
+2. Identify the selected class, subject, and other available context.
+3. Convert the question into an embedding using the same compatible embedding model used during ingestion.
+4. Perform vector similarity search in MongoDB.
+5. Apply metadata filters based on the student's selected class, subject, board, and relevant document constraints.
+6. Retrieve the most relevant chunks based on similarity.
+
+For example:
+
+Student question:
+
+"What might happen to coastal cities in India if glaciers and polar ice keep melting faster?"
+
+The system converts this question into a vector and searches for semantically related educational content.
+
+It may retrieve chunks discussing:
+
+- Melting glaciers.
+- Rising sea levels.
+- Flooding in coastal regions.
+- Effects of climate change.
+- Environmental consequences.
+
+These chunks do not necessarily need to contain the exact wording of the student's question.
+
+The purpose of vector search is to retrieve conceptually relevant information.
+
+### Top-K retrieval
+
+Explain how the system retrieves the top-K most relevant chunks.
+
+For example:
+
+- Retrieve the top 5 chunks.
+- Evaluate their relevance.
+- Optionally rerank them.
+- Select the most useful 3–5 chunks.
+- Pass only the necessary context to Gemini.
+
+Do not blindly retrieve a large number of chunks. More retrieved content does not always mean better answers.
+
+The retrieval count should be configurable according to question complexity and context size.
+
+### Hybrid search
+
+Consider implementing hybrid retrieval using:
+
+- Vector search for semantic similarity.
+- Full-text or keyword search for exact terminology.
+- Metadata filtering for class, subject, and chapter.
+
+This is especially useful when students ask questions containing specific scientific terms, chapter names, formulas, or definitions.
+
+## A — Augmentation
+
+Augmentation means combining the original student question with the relevant information retrieved from MongoDB.
+
+The system should construct a contextual prompt containing:
+
+1. Student question.
+2. Selected class and subject.
+3. Relevant syllabus information.
+4. Retrieved textbook chunks.
+5. Expected vocabulary level.
+6. Expected conceptual depth.
+7. Answer-generation instructions.
+
+Example:
+
+```text
+Student Class: 9
+Subject: Science
+
+Question:
+What might happen to coastal cities in India if glaciers
+and polar ice keep melting faster?
+
+Retrieved Educational Context:
+1. Basic explanation of melting glaciers.
+2. Introduction to rising sea levels.
+3. Effects of flooding on coastal regions.
+
+Instructions:
+Explain the concept in simple language suitable
+for a Class 9 student.
+
+Avoid unnecessary advanced geographical models,
+complex numerical projections, and university-level
+scientific terminology.
+
+Give a scientifically accurate and understandable answer.
+```
+
+The augmentation stage should ensure that Gemini receives sufficient educational context without sending the entire textbook.
+
+Importantly, retrieved textbook content should guide the educational level, not restrict the answer to exact textbook sentences.
+
+## G — Generation
+
+Generation is the final stage in which Gemini uses the student's question and augmented educational context to generate the answer.
+
+The Gemini API should generate responses that are:
+
+- Scientifically accurate.
+- Appropriate for the selected class.
+- Easy to understand.
+- Consistent with the student's syllabus.
+- Written using suitable vocabulary.
+- Detailed enough to explain the concept.
+- Free from unnecessary advanced information.
+- Relevant to the actual question.
+
+The system should allow Gemini to use its broader knowledge when the retrieved textbook content does not directly cover a question.
+
+However, the response must remain appropriate for the student's learning level.
+
+---
+
+# 7. Grade-Aware Knowledge Retrieval and Answer Generation
+
+This is one of the most important features of SyncScholar.
+
+The system must not generate the same explanation for students of every class.
+
+### Example
+
+Consider the question:
+
+"What might happen to coastal cities in India if glaciers and polar ice keep melting faster?"
+
+**If the student selects Class 9:**
+
+Explain:
+- Melting ice contributes to rising sea levels.
+- Coastal areas may experience more flooding.
+- People, buildings, roads, and farmland may be affected.
+- Explain the concept using familiar vocabulary.
+
+**If the student selects Class 12:**
+
+The explanation may include:
+- Thermal expansion of seawater.
+- Contributions from land-based ice loss.
+- Coastal vulnerability.
+- Climate-related impacts.
+- More detailed scientific terminology and mechanisms.
+
+The underlying question is the same, but the expected explanation changes according to the student's educational level.
+
+### Grade-level context parameters
+
+Design a mechanism that retrieves or derives:
+
+- Class level.
+- Subject.
+- Board and syllabus.
+- Expected vocabulary.
+- Conceptual complexity.
+- Previously introduced concepts.
+- Expected mathematical knowledge.
+- Appropriate examples.
+- Relevant learning objectives.
+- Depth of explanation.
+
+Store these parameters as structured metadata wherever practical.
+
+Do not assume that the textbook contains every possible question or answer. The knowledge base should provide the educational boundaries and reference context.
+
+---
+
+# 8. Gemini API Integration and Prompt Engineering
+
+Design an efficient API integration between MongoDB and the Gemini API.
+
+The backend should construct a compact, context-aware request containing:
+
+```text
+SYSTEM INSTRUCTIONS:
+You are SyncScholar, an intelligent educational AI assistant.
+
+STUDENT INFORMATION:
+Class: {selected_class}
+Subject: {selected_subject}
+
+STUDENT QUESTION:
+{user_question}
+
+RELEVANT EDUCATIONAL CONTEXT:
+{retrieved_chunks}
+
+ANSWERING RULES:
+1. Answer according to the selected class.
+2. Use age-appropriate and syllabus-relevant language.
+3. Explain difficult terminology when necessary.
+4. Avoid unnecessarily advanced concepts.
+5. Use relevant textbook context as an educational reference.
+6. Do not blindly copy textbook content.
+7. Use broader scientific knowledge when needed.
+8. Never invent facts or formulas.
+9. If the retrieved context is insufficient, use reliable general knowledge
+   while maintaining the student's educational level.
+10. Provide a direct and understandable answer.
+```
+
+The prompt should be generated dynamically according to the student's question and retrieved context.
+
+Avoid sending the entire syllabus or all textbook chunks in every API request.
+
+Use only the relevant context required to answer the question.
+
+---
+
+# 9. Performance Optimization: 2–5 Second Response Target
+
+A major system requirement is that a student should ideally receive an answer within **2–5 seconds** of submitting a question.
+
+The system must be designed for low latency without compromising answer quality.
+
+### 9.1 Separate ingestion and query processing
+
+Implement two independent workflows.
+
+**A. Offline document ingestion**
+
+This happens when an administrator uploads a textbook.
+
+1. PDF extraction.
+2. Text cleaning.
+3. Structural identification.
+4. Content classification.
+5. Semantic chunking.
+6. Embedding generation.
+7. Metadata assignment.
+8. MongoDB storage.
+9. Vector index availability verification.
+
+This process may take minutes or longer depending on the document size. It must not happen during student question answering.
+
+**B. Real-time question answering**
+
+This happens whenever a student submits a question.
+
+1. Receive the question and selected class.
+2. Generate a query embedding.
+3. Search MongoDB using vector and metadata filters.
+4. Retrieve the top relevant chunks.
+5. Construct the augmented prompt.
+6. Call the Gemini API.
+7. Return the generated answer.
+
+This workflow should avoid unnecessary operations and retrieve only relevant information.
+
+### 9.2 Latency optimization techniques
+
+Consider:
+
+- Efficient MongoDB vector indexes.
+- Optimized database queries.
+- Metadata pre-filtering.
+- Embedding API batching during ingestion.
+- Caching frequently requested educational context.
+- Caching repeated query results where appropriate.
+- Reusing persistent API connections.
+- Keeping prompts compact.
+- Avoiding unnecessary LLM calls.
+- Avoiding multiple sequential retrieval stages unless needed.
+- Streaming responses where appropriate.
+- Selecting a Gemini model suitable for low-latency generation.
+
+### 9.3 Realistic performance expectations
+
+Do not assume that vector search automatically makes the complete response take two seconds.
+
+Measure the latency of each stage separately:
+
+| Processing stage | Target budget |
+|---|---:|
+| Request handling | 50–100 ms |
+| Query embedding | 100–300 ms |
+| MongoDB retrieval | 50–200 ms |
+| Prompt construction | 20–50 ms |
+| Gemini generation | 1–3 seconds |
+| Network and remaining overhead | Variable |
+
+These are initial engineering targets, not guaranteed timings.
+
+The complete 2–5 second response objective must be validated through actual testing under realistic network conditions, concurrent users, and model/API latency.
+
+Identify bottlenecks and optimize the most expensive stages.
+
+---
+
+# 10. Handling Questions Not Directly Covered by the Textbook
+
+SyncScholar should not behave like a traditional textbook search engine.
+
+It should be capable of answering conceptual, practical, hypothetical, and application-based questions.
+
+For example:
+
+A Class 9 student asks:
+
+"What might happen to coastal cities in India if glaciers and polar ice keep melting faster?"
+
+The textbook might not directly discuss this exact question.
+
+The system should:
+
+1. Understand the intent of the question.
+2. Retrieve related concepts from the Class 9 educational knowledge base.
+3. Identify the student's expected knowledge level.
+4. Use Gemini's broader knowledge to construct the explanation.
+5. Avoid advanced details that are unnecessary for Class 9.
+6. Deliver an accurate, understandable answer.
+
+If no relevant textbook chunks are found, the system should not generate artificial textbook references or fabricate retrieved information.
+
+It should use the available class-level and subject-level metadata, together with reliable general knowledge.
+
+---
+
+# 11. Accuracy, Reliability, and Quality Control
+
+The system must include validation mechanisms to prevent:
+
+- Incorrectly structured educational content.
+- Lost mathematical or scientific formulas.
+- Incorrect chapter or topic classification.
+- Irrelevant chunks being retrieved.
+- Retrieval from the wrong class or subject.
+- Duplicate information in the generated context.
+- Incorrect interpretation of scientific concepts.
+- Hallucinated textbook references.
+- Unnecessary advanced explanations.
+- Incorrect citations or page references.
+
+Where applicable, maintain traceability between generated answers and the original document, including chapter and page references.
+
+The system should distinguish clearly between:
+- Information retrieved from the textbook.
+- Additional explanations generated using broader AI knowledge.
+
+---
+
+# 12. Expected Technical Deliverables
+
+Based on all the requirements above, provide the following deliverables.
+
+### Deliverable 1: PDF comparison and analysis
+
+Compare the original NCERT PDF with the provided extracted text.
+
+Identify:
+- Structural differences.
+- Extraction errors.
+- Missing information.
+- Formula-related problems.
+- Figure-related text.
+- Formatting inconsistencies.
+
+### Deliverable 2: General-purpose PDF processing rules
+
+Create a detailed set of reusable instructions for the PDF-processing AI agent.
+
+These rules must work across educational PDFs, not just NCERT Class 9 Science.
+
+### Deliverable 3: Chunking strategy
+
+Explain and recommend:
+- Chunking methodology.
+- Chunk sizes.
+- Overlap.
+- Semantic boundaries.
+- Metadata preservation.
+- Handling formulas, tables, and examples.
+
+### Deliverable 4: Embedding architecture
+
+Explain:
+- Embedding generation.
+- Suitable embedding-model selection criteria.
+- Vector dimensions.
+- Embedding storage.
+- Model consistency.
+- Embedding updates.
+
+### Deliverable 5: MongoDB database architecture
+
+Provide:
+- Collection design.
+- Document schemas.
+- Metadata structure.
+- Vector indexing strategy.
+- Example MongoDB documents.
+- Efficient retrieval queries.
+
+### Deliverable 6: Complete RAG architecture
+
+Explain the complete Retrieval-Augmented Generation pipeline:
+
+- Retrieval.
+- Augmentation.
+- Generation.
+
+Include a detailed explanation of how query embeddings, vector similarity search, top-K retrieval, metadata filtering, and Gemini integration work together.
+
+### Deliverable 7: Grade-aware Gemini prompt
+
+Develop a production-oriented system prompt that dynamically adapts answers according to the student's selected class, subject, syllabus, and expected level of understanding.
+
+### Deliverable 8: End-to-end system architecture
+
+Provide the complete architecture from PDF upload to student answer generation.
+
+Include:
+- Frontend.
+- Backend.
+- PDF processing pipeline.
+- Embedding model.
+- MongoDB.
+- Vector search.
+- Gemini API.
+- Caching.
+- Response generation.
+
+### Deliverable 9: Performance optimization
+
+Explain how the system can achieve the 2–5 second response target and identify realistic bottlenecks.
+
+### Deliverable 10: Implementation roadmap
+
+Provide a step-by-step implementation plan, recommended technologies, APIs, and important engineering decisions.
+
+---
+
+# 13. Important Instructions for the AI Agent
+
+Follow these principles throughout the analysis and design process:
+
+1. Do not treat PDF processing as simple text extraction. It requires structural understanding and semantic organization.
+2. Do not assume that every PDF follows the same formatting or chapter structure.
+3. Do not use arbitrary chunk boundaries when meaningful educational boundaries are available.
+4. Do not generate embeddings repeatedly for unchanged document content.
+5. Do not send entire textbooks to Gemini for every student question.
+6. Do not confuse vector similarity with exact factual correctness.
+7. Do not retrieve information without considering the student's selected class and subject.
+8. Do not restrict Gemini to textbook wording when explaining concepts.
+9. Do not introduce advanced concepts that exceed the student's expected learning level without a clear educational reason.
+10. Do not compromise scientific accuracy for simpler explanations.
+11. Do not fabricate missing information, formulas, figures, or textbook references.
+12. Optimize for scalability, maintainability, retrieval accuracy, and low latency.
+13. Prefer practical, production-oriented solutions over unnecessarily complicated architectures.
+14. Explain the reasoning behind important technical decisions.
+15. Clearly distinguish between ingestion-time operations and real-time question-answering operations.
+
+**Final objective:**
+
+Build SyncScholar as a scalable, RAG-powered, grade-aware educational AI assistant.
+
+Its knowledge base should understand what a student is expected to know, while Gemini should use that context to explain concepts in an appropriate way.
+
+The system should be capable of processing large educational PDFs, storing their knowledge efficiently, retrieving only the most relevant information, and generating accurate, syllabus-aligned answers within an ideal response time of 2–5 seconds.
+
+The ultimate goal is not to make students memorize textbook passages. It is to help them understand any question at the right educational level using the textbook as a knowledge and learning reference.

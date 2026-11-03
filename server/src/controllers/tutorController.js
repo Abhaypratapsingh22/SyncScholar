@@ -18,7 +18,8 @@ import { askTutor } from '../services/ragTutorService.js';
 export async function handleAskTutor(req, res) {
   try {
     const student = req.user;
-    const { question, subject, learningObjectiveId } = req.body;
+    const { question, subject, learningObjectiveId, grade, grade_level, conversationHistory } = req.body;
+    const targetGrade = grade || grade_level || student.current_grade || 9;
 
     // 1. Validation
     if (!question || typeof question !== 'string' || question.trim().length === 0) {
@@ -49,6 +50,13 @@ export async function handleAskTutor(req, res) {
       });
     }
 
+    if (conversationHistory !== undefined && conversationHistory !== null && !Array.isArray(conversationHistory)) {
+      return res.status(400).json({
+        success: false,
+        message: 'The "conversationHistory" field must be an array if provided.',
+      });
+    }
+
     // 2. Delegate to RAG Tutor Service
     const result = await askTutor({
       studentId: student._id,
@@ -56,6 +64,8 @@ export async function handleAskTutor(req, res) {
       question: question.trim(),
       learningObjectiveId: learningObjectiveId || null,
       userDoc: student,
+      grade: Number(targetGrade),
+      conversationHistory: Array.isArray(conversationHistory) ? conversationHistory : [],
     });
 
     return res.status(200).json(result);

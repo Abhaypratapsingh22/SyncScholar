@@ -51,6 +51,7 @@ export async function buildAdaptiveFilter({
   question = '',
   learningObjectiveId = null,
   userDoc = null,
+  grade = null,
 }) {
   if (!studentId && !userDoc) {
     throw new Error('buildAdaptiveFilter requires either studentId or userDoc.');
@@ -62,7 +63,7 @@ export async function buildAdaptiveFilter({
     throw new Error(`Student not found with ID: ${studentId}`);
   }
 
-  const currentGrade = Number(student.current_grade) || 7;
+  const currentGrade = grade ? Number(grade) : (Number(student.current_grade) || 7);
   const normalizedSubject = normalizeSubject(subject || 'Science');
 
   // 2. Locate relevant concept mastery score
