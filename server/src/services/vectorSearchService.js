@@ -36,15 +36,15 @@ export function cleanSearchQuery(query) {
   if (!query || typeof query !== 'string') return '';
   let cleaned = query.trim();
 
-  // Strip conversational slang, greeting, and filler prefixes:
+  // Strip conversational slang, greeting, and filler prefixes (requiring word boundary):
   cleaned = cleaned.replace(
-    /^(?:yo\s+bro|yo|hey\s+bro|hey|hi|hello|plz|pls|please|can\s+you\s+(?:please\s+)?tell\s+me|tell\s+me|bro|dude)\s*[,:]*\s*/i,
+    /^(?:yo\s+bro|yo|hey\s+bro|hey|hi|hello|plz|pls|please|can\s+you\s+(?:please\s+)?tell\s+me|tell\s+me|bro|dude)\b\s*[,:]*\s*/i,
     ''
   );
 
-  // Strip conversational suffixes:
+  // Strip conversational suffixes (requiring preceding whitespace or punctuation):
   cleaned = cleaned.replace(
-    /\s*[,:]*\s*(?:yo\s+bro|yo|bro|man|dude|plz|pls|please)\s*[?!.]*$/i,
+    /(?:[\s,;:.!?]+)\b(?:yo\s+bro|yo|bro|man|dude|plz|pls|please)\s*[?!.]*$/i,
     ''
   );
 

@@ -85,9 +85,21 @@ export async function updateStudentGrade(req, res) {
   try {
     const student = req.user;
     const { grade } = req.body;
-    const numGrade = parseInt(grade, 10);
 
-    if (isNaN(numGrade) || numGrade < 1 || numGrade > 12) {
+    if (
+      grade === undefined ||
+      grade === null ||
+      (typeof grade !== 'number' && (typeof grade !== 'string' || !grade.trim()))
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid grade provided. Must be between 1 and 12.',
+      });
+    }
+
+    const numGrade = Number(grade);
+
+    if (!Number.isInteger(numGrade) || numGrade < 1 || numGrade > 12) {
       return res.status(400).json({
         success: false,
         message: 'Invalid grade provided. Must be between 1 and 12.',

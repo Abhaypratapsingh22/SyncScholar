@@ -14,6 +14,12 @@
  * 10. SS-010: Chemical formula recall (H2O, CO2, NaCl, Ca(OH)2).
  */
 
+import dns from 'dns';
+try {
+  dns.setServers(['8.8.8.8', '1.1.1.1']);
+} catch {
+  // Ignore if custom DNS cannot be configured
+}
 import mongoose from 'mongoose';
 import { env } from './src/config/env.js';
 import { askTutor } from './src/services/ragTutorService.js';
@@ -152,9 +158,12 @@ async function runTestSuite() {
     });
 
     const answer2 = res2.data.answer;
+    const has216 = answer2.includes('216');
+    const has9km = /\b(?:9(?:\.0)?\s*km|9[,.]?000\s*m)\b/i.test(answer2);
     const test4Pass =
       !answer2.includes('My approved textbook passages do not cover this specific detail') &&
-      (answer2.includes('216') || answer2.includes('60') || answer2.includes('9')) &&
+      has216 &&
+      has9km &&
       !res2.data.metadata.out_of_syllabus;
 
     report(

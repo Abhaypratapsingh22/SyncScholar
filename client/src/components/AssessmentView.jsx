@@ -213,15 +213,25 @@ const OFFLINE_FALLBACK_DECK = {
   ],
 };
 
-export function AssessmentView({ student, syncState, onUpdateGrade }) {
+export function AssessmentView({ student, selectedGrade = 9, syncState, onUpdateGrade }) {
   const [activeSubTab, setActiveSubTab] = useState('quiz'); // 'quiz' | 'flashcards'
-  const defaultTopic = (student?.current_grade === 9 || !student?.current_grade)
+  const effectiveGrade = student?.current_grade || selectedGrade || 9;
+  const defaultTopic = (effectiveGrade === 9)
     ? (TOPIC_PRESETS.find((t) => t.grade === 9) || TOPIC_PRESETS[0])
-    : (TOPIC_PRESETS.find((t) => t.grade === student.current_grade) || TOPIC_PRESETS[0]);
+    : (TOPIC_PRESETS.find((t) => t.grade === effectiveGrade) || TOPIC_PRESETS[0]);
   const [selectedTopic, setSelectedTopic] = useState(defaultTopic);
   const [loading, setLoading] = useState(false);
   const [assessmentData, setAssessmentData] = useState(OFFLINE_FALLBACK_CLASS9_SOUND);
   const [feedbackMessage, setFeedbackMessage] = useState(null);
+
+  // Sync selected topic when active grade changes
+  useEffect(() => {
+    const targetGrade = student?.current_grade || selectedGrade || 9;
+    const match = TOPIC_PRESETS.find((t) => t.grade === targetGrade);
+    if (match && selectedTopic.grade !== targetGrade) {
+      setSelectedTopic(match);
+    }
+  }, [student?.current_grade, selectedGrade]);
 
   // Quiz Mode State
   const [userAnswers, setUserAnswers] = useState({}); // { [questionIndex]: optionIndex }
@@ -235,7 +245,7 @@ export function AssessmentView({ student, syncState, onUpdateGrade }) {
   const [masteredCards, setMasteredCards] = useState(new Set());
 
   const isOnline = syncState?.isOnline ?? true;
-  const currentGrade = selectedTopic.grade || student?.current_grade || 9;
+  const currentGrade = selectedTopic.grade || student?.current_grade || selectedGrade || 9;
 
   // Hydrate local cache or fallback for the selected topic
   useEffect(() => {

@@ -78,6 +78,7 @@ async function runScienceVerification() {
       console.log(`✅ TEST 1 PASSED: Successfully retrieved Class 9 Science chunk.`);
     } else {
       console.log(`❌ TEST 1 FAILED: No chunks retrieved.`);
+      process.exitCode = 1;
     }
 
     // -------------------------------------------------------------------------
@@ -108,6 +109,7 @@ async function runScienceVerification() {
       console.log(`✅ TEST 2 PASSED: Successfully retrieved Mitochondria chunk.`);
     } else {
       console.log(`❌ TEST 2 FAILED: No chunks retrieved.`);
+      process.exitCode = 1;
     }
 
     // -------------------------------------------------------------------------
@@ -189,9 +191,11 @@ async function runScienceVerification() {
         console.log('✅ TEST 4 PASSED: Sound wave question answered Socratically with Ch. 10 citation!');
       } else {
         console.log('❌ TEST 4 FAILED: Out of syllabus triggered unexpectedly.');
+        process.exitCode = 1;
       }
     } else {
       console.log('❌ TEST 4 FAILED: No citations returned for Sound Wave question.');
+      process.exitCode = 1;
     }
 
     console.log('\n================================================================');
@@ -199,6 +203,7 @@ async function runScienceVerification() {
     console.log('================================================================');
   } catch (err) {
     console.error('Verification Error:', err);
+    process.exitCode = 1;
   } finally {
     await mongoose.disconnect();
     console.log('🔌 Disconnected from MongoDB Atlas.');

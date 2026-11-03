@@ -35,16 +35,6 @@ const COLLECTION_NAME = process.env.COLLECTION_NAME || 'curriculum_chunks';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const EMBEDDING_MODEL_NAME = process.env.EMBEDDING_MODEL?.replace(/^models\//, '') || 'gemini-embedding-001';
 
-if (!MONGODB_URI) {
-  console.error('❌ Error: MONGODB_URI is not set in ingestion/.env');
-  process.exit(1);
-}
-
-if (!GEMINI_API_KEY) {
-  console.error('❌ Error: GEMINI_API_KEY is not set in ingestion/.env');
-  process.exit(1);
-}
-
 export const SUPPLEMENTARY_CHUNKS = [
   // ===========================================================================
   // CLASS 9 SUPPLEMENTARY CHUNKS (Matter in Our Surroundings, Gravitation, Mole Concept, Lysosomes)
@@ -74,7 +64,7 @@ export const SUPPLEMENTARY_CHUNKS = [
       chapter_number: 1,
       chapter_title: 'Matter in Our Surroundings',
       learning_objective_id: 'SCI-09-EVAP-02',
-      difficulty_tier: 'intermediate',
+      difficulty_tier: 'standard',
       page_number: 9,
       source_url: 'https://ncert.nic.in/textbook.php?jesc1=1-13'
     }
@@ -83,13 +73,13 @@ export const SUPPLEMENTARY_CHUNKS = [
     chunk_id: 'ncert_sci_g9_ch01_supp_p05_c03',
     text: 'Density and States of Matter: Density is defined as mass per unit volume (density = mass / volume). Solids generally have higher density than liquids because their constituent particles are closely packed with strong intermolecular forces. However, ice floats on water even though ice is a solid and water is a liquid. When liquid water freezes to form ice, the water molecules arrange themselves in an open, cage-like three-dimensional crystalline lattice held together by hydrogen bonds. This open cage structure traps empty spaces between molecules, meaning that for a given mass, ice occupies a larger volume than the same mass of liquid water. Consequently, the density of ice is lower than the density of liquid water, allowing ice to float on water.',
     metadata: {
-      source_curriculum: 'NCERT',
+      source_curriculum: 'NCERT (Classic Edition)',
       grade_level: 9,
       subject: 'Science',
       chapter_number: 1,
-      chapter_title: 'Matter in Our Surroundings',
-      learning_objective_id: 'SCI-09-MATT-03',
-      difficulty_tier: 'intermediate',
+      chapter_title: 'Matter in Our Surroundings (Classic NCERT Edition)',
+      learning_objective_id: 'SCI-09-MATT-SUPP-01',
+      difficulty_tier: 'standard',
       page_number: 5,
       source_url: 'https://ncert.nic.in/textbook.php?jesc1=1-13'
     }
@@ -134,7 +124,7 @@ export const SUPPLEMENTARY_CHUNKS = [
       chapter_number: 3,
       chapter_title: 'Atoms and Molecules',
       learning_objective_id: 'SCI-09-MOLE-01',
-      difficulty_tier: 'intermediate',
+      difficulty_tier: 'standard',
       page_number: 38,
       source_url: 'https://ncert.nic.in/textbook.php?jesc1=3-13'
     }
@@ -149,7 +139,7 @@ export const SUPPLEMENTARY_CHUNKS = [
       chapter_number: 3,
       chapter_title: 'Atoms and Molecules',
       learning_objective_id: 'SCI-09-MOLE-02',
-      difficulty_tier: 'intermediate',
+      difficulty_tier: 'standard',
       page_number: 39,
       source_url: 'https://ncert.nic.in/textbook.php?jesc1=3-13'
     }
@@ -158,12 +148,12 @@ export const SUPPLEMENTARY_CHUNKS = [
     chunk_id: 'ncert_sci_g9_ch02_supp_p15_c01',
     text: 'Lysosomes — The Clean-Up System and Suicide Bags of the Cell: Structurally, lysosomes are membrane-bound sacs filled with powerful digestive enzymes (hydrolytic enzymes). These enzymes are synthesized by the rough endoplasmic reticulum (RER). Lysosomes are a kind of waste disposal and clean-up system of the cell. They help to keep the cell clean by digesting any foreign material as well as worn-out cell organelles. Complex substances are broken down into simpler substances. During the disturbance in cellular metabolism, for example, when the cell gets damaged, lysosomes may burst and the digestive enzymes digest their own cell. Therefore, lysosomes are also famously known as the "suicide bags" of a cell.',
     metadata: {
-      source_curriculum: 'NCERT',
+      source_curriculum: 'NCERT (Classic Edition)',
       grade_level: 9,
       subject: 'Science',
       chapter_number: 2,
-      chapter_title: 'Cell: The Building Block of Life',
-      learning_objective_id: 'SCI-09-CELL-05',
+      chapter_title: 'Cell: The Fundamental Unit of Life (Classic NCERT Edition)',
+      learning_objective_id: 'SCI-09-CELL-SUPP-01',
       difficulty_tier: 'foundational',
       page_number: 15,
       source_url: 'https://ncert.nic.in/textbook.php?jesc1=2-13'
@@ -243,7 +233,7 @@ export const SUPPLEMENTARY_CHUNKS = [
       chapter_number: 13,
       chapter_title: 'Sound',
       learning_objective_id: 'SCI-08-SOUN-02',
-      difficulty_tier: 'intermediate',
+      difficulty_tier: 'standard',
       page_number: 162,
       source_url: 'https://ncert.nic.in/textbook/pdf/hesc113.pdf'
     }
@@ -383,6 +373,16 @@ async function generateEmbeddingWithRetry(model, text, maxRetries = 5) {
 }
 
 async function runSupplementaryIngestion() {
+  if (!MONGODB_URI) {
+    console.error('❌ Error: MONGODB_URI is not set in ingestion/.env');
+    process.exit(1);
+  }
+
+  if (!GEMINI_API_KEY) {
+    console.error('❌ Error: GEMINI_API_KEY is not set in ingestion/.env');
+    process.exit(1);
+  }
+
   console.log('================================================================');
   console.log('🚀 SyncScholar — Supplementary NCERT Ingestion Pipeline');
   console.log('================================================================');
@@ -443,5 +443,8 @@ async function runSupplementaryIngestion() {
   }
 }
 
-runSupplementaryIngestion();
+// Run if called directly
+if (process.argv[1] && process.argv[1].endsWith('seed_supplementary_chunks.js')) {
+  runSupplementaryIngestion();
+}
 

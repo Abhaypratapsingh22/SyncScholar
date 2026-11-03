@@ -17,8 +17,12 @@ const __dirname = path.dirname(__filename);
 const serverRootDir = path.resolve(__dirname, '../../');
 dotenv.config({ path: path.join(serverRootDir, '.env') });
 
-// Allow local corporate network proxies in non-production environments
-if (process.env.NODE_ENV !== 'production' && !process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
+// Allow local corporate network proxies only through an explicit opt-in in local development;
+// non-development environments (production, staging, test, or unset) remain strictly on verified TLS path.
+if (
+  process.env.NODE_ENV === 'development' &&
+  (process.env.ALLOW_INSECURE_TLS === 'true' || process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0')
+) {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 }
 

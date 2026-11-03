@@ -55,7 +55,7 @@ const MIN_CHUNK_WORDS = 15; // Lowered from 40 to 15 for math diagrams, graphs, 
 const MAX_CHUNK_WORDS = 380;
 
 // Protected mathematical keywords and symbols that must NEVER be stripped by header/footer cleaning
-const PROTECTED_MATH_REGEX = /\b(example|solution|theorem|definition|activity|coordinates|cartesian|abscissa|ordinate)\b|[=+\-xy]/i;
+const PROTECTED_MATH_REGEX = /\b(example|solution|theorem|definition|activity|coordinates|cartesian|abscissa|ordinate|[xy])\b|[=+]|\d+-\d+/i;
 
 // -----------------------------------------------------------------------------
 // 2. Helper Functions

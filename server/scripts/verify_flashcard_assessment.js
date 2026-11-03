@@ -577,7 +577,7 @@ async function runVerification() {
       console.log('\n🎉 ALL 7 FORMATIVE ASSESSMENT & FLASHCARD TESTS PASSED PERFECTLY!');
     } else {
       console.error('\n⚠️ Some verification checks failed.');
-      process.exit(1);
+      process.exitCode = 1;
     }
   } finally {
     try {

@@ -10,6 +10,7 @@ import { BookOpen, User, Award, LogIn, ChevronDown } from 'lucide-react';
 
 export function Header({
   student,
+  selectedGrade = 9,
   syncState,
   onTriggerSync,
   onOpenAuth,
@@ -47,7 +48,7 @@ export function Header({
               <span className="text-[10px] text-slate-700 uppercase font-bold hidden sm:inline">Class:</span>
               <select
                 aria-label="Active Curriculum Class"
-                value={student?.current_grade || 9}
+                value={student?.current_grade || selectedGrade || 9}
                 onChange={(e) => onUpdateGrade?.(Number(e.target.value))}
                 className="bg-transparent font-bold text-brand-700 focus:outline-none cursor-pointer"
               >

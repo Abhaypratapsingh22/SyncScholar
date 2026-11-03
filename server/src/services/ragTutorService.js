@@ -126,10 +126,9 @@ export function condenseRetrievalQuery(query, history = []) {
   }
 
   const lower = trimmed.toLowerCase();
-  // Check if query is anaphoric, short follow-up, or refers to previous turn
+  // Check if query is anaphoric (explicit pronoun references or summary requests)
   const isAnaphoric =
-    /\b(it|its|this|these|that|those|they|them|formula|equation|example|definition|summarize|summary|why|how)\b/i.test(lower) ||
-    trimmed.length < 35;
+    /\b(it|its|this|these|that|those|they|them|summarize|summary|whole discussion)\b/i.test(lower);
 
   if (!isAnaphoric) {
     return trimmed;
@@ -142,10 +141,12 @@ export function condenseRetrievalQuery(query, history = []) {
     const content = msg.content || msg.text || '';
     if (!content) continue;
 
-    // If it's a student query, extract key terms
+    // If it's a student query, extract key terms (skipping anaphoric follow-ups)
     if (msg.role === 'student' || msg.role === 'user') {
       const cleaned = content.replace(/[?!.]/g, '').trim();
-      if (cleaned.length > 5 && cleaned.length < 150) {
+      const isPriorAnaphoric =
+        /\b(it|its|this|these|that|those|they|them|summarize|summary|whole discussion)\b/i.test(cleaned);
+      if (!isPriorAnaphoric && cleaned.length > 5 && cleaned.length < 150) {
         priorTopic = cleaned;
         break;
       }
@@ -511,6 +512,9 @@ function extractCitationsFromChunks(chunks, selectedCitations = [], modelAnswer 
       const foundChunk = chunks.find((c) => {
         const meta = c.metadata || {};
         if (sel.page_number && Number(sel.page_number) === Number(meta.page_number)) {
+          if (sel.grade_level !== undefined && sel.grade_level !== null) {
+            return Number(sel.grade_level) === Number(meta.grade_level);
+          }
           return true;
         }
         if (

@@ -63,7 +63,12 @@ export async function buildAdaptiveFilter({
     throw new Error(`Student not found with ID: ${studentId}`);
   }
 
-  const currentGrade = grade ? Number(grade) : (Number(student.current_grade) || 7);
+  const numGrade = grade !== null && grade !== undefined ? Number(grade) : null;
+  const validGrade =
+    numGrade !== null && Number.isInteger(numGrade) && numGrade >= 1 && numGrade <= 12
+      ? numGrade
+      : null;
+  const currentGrade = validGrade || (Number(student.current_grade) || 7);
   const normalizedSubject = normalizeSubject(subject || 'Science');
 
   // 2. Locate relevant concept mastery score

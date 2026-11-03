@@ -131,9 +131,9 @@ class SyncService {
       if (reachable !== this.isOnline) {
         this.isOnline = reachable;
         this.notify();
-        if (reachable) {
-          this.triggerSync();
-        }
+      }
+      if (reachable && this.pendingCount > 0) {
+        this.triggerSync();
       }
       return reachable;
     } catch {
@@ -178,11 +178,13 @@ class SyncService {
   async triggerSync() {
     if (this.isSyncing || !this.isOnline) return;
 
+    this.isSyncing = true;
+    this.notify();
+
     try {
       const pendingAttempts = await getPendingQuizSubmissions();
       if (!pendingAttempts || pendingAttempts.length === 0) {
         this.pendingCount = 0;
-        this.notify();
         return;
       }
 
@@ -191,7 +193,6 @@ class SyncService {
       const currentStudentId = session?.profile?.id || session?.profile?._id;
       if (!currentStudentId) {
         // Without an authenticated student ID, leave items queued until login
-        await this.refreshPendingCount();
         return;
       }
 
@@ -201,12 +202,8 @@ class SyncService {
       );
 
       if (eligibleAttempts.length === 0) {
-        await this.refreshPendingCount();
         return;
       }
-
-      this.isSyncing = true;
-      this.notify();
 
       // Split eligible attempts into chunks no larger than server limit (50)
       const MAX_BATCH_SIZE = 50;

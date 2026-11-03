@@ -249,6 +249,32 @@ export async function markQuizSubmissionSynced(clientAttemptId) {
 }
 
 /**
+ * Rebinds pending quiz attempts queued under offline IDs to an authenticated student ID upon login.
+ * Matches by roll number (e.g. 'offline-<roll>' or student_id matching offline patterns).
+ *
+ * @param {string} rollNumber
+ * @param {string} authenticatedStudentId
+ */
+export async function rebindPendingQuizSubmissions(rollNumber, authenticatedStudentId) {
+  if (!rollNumber || !authenticatedStudentId) return;
+  const offlinePattern = `offline-${rollNumber}`;
+  const pending = await db.pending_quiz_submissions.toArray();
+  for (const item of pending) {
+    if (
+      item.student_id === offlinePattern ||
+      item.student_id === rollNumber ||
+      item.payload?.student_id === offlinePattern ||
+      item.payload?.student_id === rollNumber
+    ) {
+      await db.pending_quiz_submissions.update(item.client_attempt_id, {
+        student_id: authenticatedStudentId,
+        'payload.student_id': authenticatedStudentId,
+      });
+    }
+  }
+}
+
+/**
  * Marks a queued quiz submission as failed.
  *
  * @param {string} clientAttemptId

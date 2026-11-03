@@ -11,13 +11,14 @@ import AssessmentView from './components/AssessmentView.jsx';
 import AuthModal from './components/AuthModal.jsx';
 import MasteryModal from './components/MasteryModal.jsx';
 import { syncService } from './services/syncService.js';
-import { api, getAuthToken } from './services/api.js';
+import { api, getAuthToken, setAuthToken } from './services/api.js';
 import { getLocalStudentSession, saveLocalStudentSession, clearLocalStudentSession } from './db/offlineDb.js';
 
 export function App() {
   const [currentTab, setCurrentTab] = useState('tutor'); // 'tutor' | 'assessment'
   const [syncState, setSyncState] = useState(syncService.getState());
   const [student, setStudent] = useState(null);
+  const [selectedGrade, setSelectedGrade] = useState(9);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [masteryModalOpen, setMasteryModalOpen] = useState(false);
 
@@ -61,6 +62,9 @@ export function App() {
 
         if (saved && saved.profile && token) {
           setStudent(saved.profile);
+          if (saved.profile.current_grade) {
+            setSelectedGrade(Number(saved.profile.current_grade));
+          }
           return;
         }
 
@@ -99,6 +103,7 @@ export function App() {
                 roll_number: res.user.roll_number || targetRoll,
               };
               setStudent(profile);
+              setSelectedGrade(Number(profile.current_grade));
               await saveLocalStudentSession({ profile, token: res.token });
               return;
             }
@@ -125,19 +130,30 @@ export function App() {
 
   const handleAuthSuccess = (newStudent) => {
     setStudent(newStudent);
+    if (newStudent?.current_grade) {
+      setSelectedGrade(Number(newStudent.current_grade));
+    }
   };
 
   const handleUpdateGrade = async (newGrade) => {
     const num = Number(newGrade);
-    setStudent((prev) => {
-      const updated = { ...(prev || {}), current_grade: num };
-      saveLocalStudentSession({ profile: updated, token: getAuthToken() }).catch(() => {});
-      return updated;
-    });
-    try {
-      await api.updateGrade(num);
-    } catch (e) {
-      console.warn('Could not update grade on server:', e);
+    setSelectedGrade(num);
+
+    if (student) {
+      setStudent((prev) => {
+        if (!prev) return null;
+        const updated = { ...prev, current_grade: num };
+        saveLocalStudentSession({ profile: updated, token: getAuthToken() }).catch(() => {});
+        return updated;
+      });
+
+      if (getAuthToken()) {
+        try {
+          await api.updateGrade(num);
+        } catch (e) {
+          console.warn('Could not update grade on server:', e);
+        }
+      }
     }
   };
 
@@ -152,6 +168,7 @@ export function App() {
       {/* Persistent Top Header with Network & Sync Status Pill */}
       <Header
         student={student}
+        selectedGrade={selectedGrade}
         syncState={syncState}
         onTriggerSync={handleTriggerSync}
         onOpenAuth={() => setAuthModalOpen(true)}
@@ -166,6 +183,7 @@ export function App() {
         {currentTab === 'tutor' && (
           <TutorView
             student={student}
+            selectedGrade={selectedGrade}
             syncState={syncState}
             onSelectTab={setCurrentTab}
             onUpdateGrade={handleUpdateGrade}
@@ -173,7 +191,12 @@ export function App() {
         )}
 
         {currentTab === 'assessment' && (
-          <AssessmentView student={student} syncState={syncState} onUpdateGrade={handleUpdateGrade} />
+          <AssessmentView
+            student={student}
+            selectedGrade={selectedGrade}
+            syncState={syncState}
+            onUpdateGrade={handleUpdateGrade}
+          />
         )}
       </main>
 

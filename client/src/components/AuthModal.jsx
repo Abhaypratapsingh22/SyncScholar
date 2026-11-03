@@ -6,7 +6,8 @@
 
 import React, { useState } from 'react';
 import { api, setAuthToken } from '../services/api.js';
-import { saveLocalStudentSession } from '../db/offlineDb.js';
+import { saveLocalStudentSession, rebindPendingQuizSubmissions } from '../db/offlineDb.js';
+import { syncService } from '../services/syncService.js';
 import { User, LogIn, Sparkles, X, Shield, Check, Layers, AlertCircle } from 'lucide-react';
 
 const DEMO_STUDENTS = [
@@ -50,7 +51,7 @@ export function AuthModal({ currentStudent, onAuthSuccess, onLogout, onClose }) 
   // Form states
   const [identifier, setIdentifier] = useState('');
   const [schoolId, setSchoolId] = useState('SCH-DEMO-01');
-  const [password, setPassword] = useState('TestStudent@123');
+  const [password, setPassword] = useState('');
 
   // Register form states
   const [regName, setRegName] = useState('');
@@ -75,9 +76,11 @@ export function AuthModal({ currentStudent, onAuthSuccess, onLogout, onClose }) 
           school_id: res.user.school_id || demo.schoolId,
           roll_number: demo.rollNumber,
         };
+        await rebindPendingQuizSubmissions(studentObj.roll_number, studentObj.id);
         await saveLocalStudentSession({ profile: studentObj, token: res.token });
         onAuthSuccess(studentObj);
         onClose();
+        syncService.triggerSync();
       } else {
         throw new Error(res?.message || 'Login failed');
       }
@@ -143,9 +146,11 @@ export function AuthModal({ currentStudent, onAuthSuccess, onLogout, onClose }) 
           school_id: res.user.school_id || schoolId,
           roll_number: res.user.roll_number || identifier,
         };
+        await rebindPendingQuizSubmissions(studentObj.roll_number, studentObj.id);
         await saveLocalStudentSession({ profile: studentObj, token: res.token });
         onAuthSuccess(studentObj);
         onClose();
+        syncService.triggerSync();
       } else {
         throw new Error(res?.message || 'Invalid credentials');
       }
@@ -181,9 +186,11 @@ export function AuthModal({ currentStudent, onAuthSuccess, onLogout, onClose }) 
           school_id: res.user.school_id || schoolId,
           roll_number: regRoll.trim(),
         };
+        await rebindPendingQuizSubmissions(studentObj.roll_number, studentObj.id);
         await saveLocalStudentSession({ profile: studentObj, token: res.token });
         onAuthSuccess(studentObj);
         onClose();
+        syncService.triggerSync();
       } else {
         throw new Error(res?.message || 'Registration failed');
       }

@@ -46,7 +46,7 @@ export async function getWeakSpotHeatmap(req, res) {
     let parsedGrade = null;
     if (grade_level !== undefined && grade_level !== '') {
       parsedGrade = Number(grade_level);
-      if (isNaN(parsedGrade) || parsedGrade < 1 || parsedGrade > 12) {
+      if (!Number.isInteger(parsedGrade) || parsedGrade < 1 || parsedGrade > 12) {
         return res.status(400).json({
           success: false,
           message: 'Invalid grade_level. Must be an integer between 1 and 12.',
@@ -109,7 +109,7 @@ export async function getStrugglingStudents(req, res) {
     let parsedGrade = null;
     if (grade_level !== undefined && grade_level !== '') {
       parsedGrade = Number(grade_level);
-      if (isNaN(parsedGrade) || parsedGrade < 1 || parsedGrade > 12) {
+      if (!Number.isInteger(parsedGrade) || parsedGrade < 1 || parsedGrade > 12) {
         return res.status(400).json({
           success: false,
           message: 'Invalid grade_level. Must be an integer between 1 and 12.',

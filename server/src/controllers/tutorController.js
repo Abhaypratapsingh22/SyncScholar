@@ -19,7 +19,20 @@ export async function handleAskTutor(req, res) {
   try {
     const student = req.user;
     const { question, subject, learningObjectiveId, grade, grade_level, conversationHistory } = req.body;
-    const targetGrade = grade || grade_level || student.current_grade || 9;
+    
+    // Validate targetGrade if provided
+    const rawGrade = grade !== undefined ? grade : grade_level;
+    let targetGrade = student?.current_grade || 9;
+    if (rawGrade !== undefined && rawGrade !== null && rawGrade !== '') {
+      const numGrade = Number(rawGrade);
+      if (!Number.isInteger(numGrade) || numGrade < 1 || numGrade > 12) {
+        return res.status(400).json({
+          success: false,
+          message: 'The "grade" field must be an integer between 1 and 12 if provided.',
+        });
+      }
+      targetGrade = numGrade;
+    }
 
     // 1. Validation
     if (!question || typeof question !== 'string' || question.trim().length === 0) {
@@ -50,11 +63,47 @@ export async function handleAskTutor(req, res) {
       });
     }
 
-    if (conversationHistory !== undefined && conversationHistory !== null && !Array.isArray(conversationHistory)) {
-      return res.status(400).json({
-        success: false,
-        message: 'The "conversationHistory" field must be an array if provided.',
-      });
+    if (conversationHistory !== undefined && conversationHistory !== null) {
+      if (!Array.isArray(conversationHistory)) {
+        return res.status(400).json({
+          success: false,
+          message: 'The "conversationHistory" field must be an array if provided.',
+        });
+      }
+
+      if (conversationHistory.length > 20) {
+        return res.status(400).json({
+          success: false,
+          message: 'The "conversationHistory" array must not exceed 20 turns.',
+        });
+      }
+
+      const validRoles = ['student', 'user', 'tutor', 'assistant'];
+      for (const turn of conversationHistory) {
+        if (!turn || typeof turn !== 'object' || Array.isArray(turn)) {
+          return res.status(400).json({
+            success: false,
+            message: 'Each item in "conversationHistory" must be an object.',
+          });
+        }
+
+        const role = turn.role;
+        const content = turn.content !== undefined ? turn.content : turn.text;
+
+        if (typeof role !== 'string' || !validRoles.includes(role.toLowerCase().trim())) {
+          return res.status(400).json({
+            success: false,
+            message: 'Each turn in "conversationHistory" must have a valid role ("student", "user", "tutor", or "assistant").',
+          });
+        }
+
+        if (typeof content !== 'string') {
+          return res.status(400).json({
+            success: false,
+            message: 'Each turn in "conversationHistory" must have a string content or text field.',
+          });
+        }
+      }
     }
 
     // 2. Delegate to RAG Tutor Service

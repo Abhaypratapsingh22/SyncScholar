@@ -218,10 +218,17 @@ export async function login(req, res) {
   try {
     const { identifier, email, roll_number, school_id, password } = req.body;
 
-    if (!password) {
+    if (!password || (typeof password === 'string' && !password.trim())) {
       return res.status(400).json({
         success: false,
         message: 'Password is required to log in.',
+      });
+    }
+
+    if (typeof password !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'password must be a string.',
       });
     }
 

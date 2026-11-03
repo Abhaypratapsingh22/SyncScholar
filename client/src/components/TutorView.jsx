@@ -182,8 +182,8 @@ const CURRICULUM_STARTER_FALLBACKS = [
   },
 ];
 
-export function TutorView({ student, syncState, onSelectTab, onUpdateGrade }) {
-  const [selectedGrade, setSelectedGrade] = useState(student?.current_grade || 9);
+export function TutorView({ student, selectedGrade: propGrade, syncState, onSelectTab, onUpdateGrade }) {
+  const [selectedGrade, setSelectedGrade] = useState(student?.current_grade || propGrade || 9);
   const [subject, setSubject] = useState('Science');
   const [question, setQuestion] = useState('');
   const [loading, setLoading] = useState(false);
@@ -195,8 +195,10 @@ export function TutorView({ student, syncState, onSelectTab, onUpdateGrade }) {
   useEffect(() => {
     if (student?.current_grade) {
       setSelectedGrade(Number(student.current_grade));
+    } else if (propGrade) {
+      setSelectedGrade(Number(propGrade));
     }
-  }, [student?.current_grade]);
+  }, [student?.current_grade, propGrade]);
 
   const handleGradeChange = (val) => {
     const newGrade = Number(val);
@@ -207,13 +209,13 @@ export function TutorView({ student, syncState, onSelectTab, onUpdateGrade }) {
   };
 
   const isOnline = syncState?.isOnline ?? true;
+  const studentKey = student?.id || student?._id || 'guest';
 
   // Load cached messages from IndexedDB for offline persistence
   useEffect(() => {
     async function loadHistory() {
       try {
-        const studentId = student?.id || student?._id || 'guest';
-        const cached = await getCachedTutorHistory(studentId, 15);
+        const cached = await getCachedTutorHistory(studentKey, 15);
         if (cached && cached.length > 0) {
           // Format into message objects
           const initialMessages = [];
@@ -291,7 +293,7 @@ export function TutorView({ student, syncState, onSelectTab, onUpdateGrade }) {
         setQuestion('');
         setErrorMessage(null);
         await cacheTutorHistory({
-          student_id: student?.id || 'guest',
+          student_id: studentKey,
           subject,
           question: textToAsk,
           answer: offlineStarter.answer,
@@ -360,7 +362,7 @@ export function TutorView({ student, syncState, onSelectTab, onUpdateGrade }) {
 
         // Cache in Dexie for offline reading
         await cacheTutorHistory({
-          student_id: student?.id || 'guest',
+          student_id: studentKey,
           subject,
           question: textToAsk,
           answer: formattedAnswer,
@@ -391,7 +393,7 @@ export function TutorView({ student, syncState, onSelectTab, onUpdateGrade }) {
         };
         setMessages((prev) => [...prev, fallbackMsg]);
         await cacheTutorHistory({
-          student_id: student?.id || 'guest',
+          student_id: studentKey,
           subject,
           question: textToAsk,
           answer: matchedStarter.answer,

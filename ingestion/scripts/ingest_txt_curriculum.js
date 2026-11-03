@@ -21,8 +21,11 @@ import dotenv from 'dotenv';
 import { MongoClient } from 'mongodb';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// Disable TLS reject for corporate proxies if running locally
-if (process.env.NODE_ENV !== 'production') {
+// Keep TLS verification enabled by default; disable only with explicit opt-in in non-production
+if (
+  process.env.NODE_ENV !== 'production' &&
+  (process.env.ALLOW_INSECURE_TLS === 'true' || process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0')
+) {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 }
 
@@ -78,43 +81,43 @@ export const CHAPTER_REGISTRY = {
   4: {
     title: 'Describing Motion Around Us',
     prefix: 'SCI-09-MOTI',
-    startPage: 43,
+    startPage: 49,
     url: 'https://ncert.nic.in/textbook.php?jesc1=4-13'
   },
   5: {
     title: 'Exploring Mixtures and their Separation',
     prefix: 'SCI-09-MIXT',
-    startPage: 63,
+    startPage: 73,
     url: 'https://ncert.nic.in/textbook.php?jesc1=5-13'
   },
   6: {
     title: 'How Forces Affect Motion',
     prefix: 'SCI-09-FORC',
-    startPage: 81,
+    startPage: 95,
     url: 'https://ncert.nic.in/textbook.php?jesc1=6-13'
   },
   7: {
     title: 'Work, Energy, and Simple Machines',
     prefix: 'SCI-09-WORK',
-    startPage: 101,
+    startPage: 117,
     url: 'https://ncert.nic.in/textbook.php?jesc1=7-13'
   },
   8: {
     title: 'Journey Inside the Atom',
     prefix: 'SCI-09-ATOM',
-    startPage: 121,
+    startPage: 141,
     url: 'https://ncert.nic.in/textbook.php?jesc1=8-13'
   },
   9: {
     title: 'Atomic Foundations of Matter',
     prefix: 'SCI-09-MATT',
-    startPage: 139,
+    startPage: 163,
     url: 'https://ncert.nic.in/textbook.php?jesc1=9-13'
   },
   10: {
     title: 'Sound Waves: Characteristics and Applications',
     prefix: 'SCI-09-SOUN',
-    startPage: 157,
+    startPage: 185,
     url: 'https://ncert.nic.in/textbook.php?jesc1=10-13'
   },
   11: {
@@ -178,6 +181,17 @@ export function parseAndCleanTextbook(rawText) {
       continue;
     }
 
+    // Detect textbook Answer Key heading and stop adding lines to current chapter
+    if (/^\s*answer\s+key\s*$/i.test(line)) {
+      if (currentChapter) {
+        currentChapter.rawLines = currentLines;
+        chapters.push(currentChapter);
+        currentChapter = null;
+        currentLines = [];
+      }
+      continue;
+    }
+
     if (currentChapter) {
       currentLines.push(line);
     }
@@ -222,7 +236,9 @@ export function cleanChapterContent(chapter) {
       continue;
     }
 
-    const isValidChapterPage = (p) => p >= chapter.startPage && p <= chapter.startPage + 32;
+    const nextChapterMeta = CHAPTER_REGISTRY[chapter.number + 1];
+    const maxPage = nextChapterMeta ? nextChapterMeta.startPage - 1 : chapter.startPage + 30;
+    const isValidChapterPage = (p) => p >= chapter.startPage && p <= maxPage;
 
     // 1. Detect Even Page Header: "<PageNum> Exploration|Grade 9" or "Exploration|Grade 9 <PageNum>"
     const evenPageMatch = rawLine.match(/^(\d{1,3})\s+Exploration\s*\|\s*Grade\s*9$/i) ||
@@ -548,7 +564,7 @@ async function main() {
 
       if (currentBatch.length >= bulkBatchSize || i === chunksToEmbed.length - 1) {
         const result = await collection.bulkWrite(currentBatch, { ordered: false });
-        upsertedCount += (result.upsertedCount + result.modifiedCount + result.matchedCount);
+        upsertedCount += (result.upsertedCount + result.matchedCount);
         currentBatch = [];
       }
 
@@ -556,7 +572,20 @@ async function main() {
       await new Promise((r) => setTimeout(r, 400));
     } catch (err) {
       console.error(`\n❌ Failed to embed chunk ${chunk.chunk_id}: ${err.message}`);
+      process.exitCode = 1;
       break;
+    }
+  }
+
+  // Flush any remaining batch before summary logs
+  if (currentBatch.length > 0) {
+    try {
+      const result = await collection.bulkWrite(currentBatch, { ordered: false });
+      upsertedCount += (result.upsertedCount + result.matchedCount);
+      currentBatch = [];
+    } catch (flushErr) {
+      console.error(`\n❌ Failed to flush remaining batch: ${flushErr.message}`);
+      process.exitCode = 1;
     }
   }
 
