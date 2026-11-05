@@ -7,6 +7,17 @@
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
+let clerkTokenGetter = null;
+
+/**
+ * Registers an asynchronous function from Clerk (e.g. getToken) to inject Clerk session tokens.
+ *
+ * @param {Function} getterFn
+ */
+export function setClerkTokenGetter(getterFn) {
+  clerkTokenGetter = getterFn;
+}
+
 /**
  * Retrieves the current authentication token from localStorage.
  *
@@ -44,7 +55,18 @@ async function request(endpoint, options = {}, timeoutMs = 20000) {
     throw error;
   }
 
-  const token = getAuthToken();
+  let token = getAuthToken();
+  if (clerkTokenGetter) {
+    try {
+      const clerkToken = await clerkTokenGetter();
+      if (clerkToken) {
+        token = clerkToken;
+      }
+    } catch {
+      // Continue with stored token
+    }
+  }
+
   const headers = {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -69,6 +91,10 @@ async function request(endpoint, options = {}, timeoutMs = 20000) {
     const data = await response.json().catch(() => null);
 
     if (!response.ok) {
+      if (response.status === 401) {
+        // Clear invalid or stale token to prevent repeating auth failures
+        setAuthToken(null);
+      }
       const error = new Error(data?.message || `HTTP error ${response.status}`);
       error.status = response.status;
       error.data = data;

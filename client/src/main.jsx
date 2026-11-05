@@ -6,9 +6,13 @@
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { ClerkProvider } from '@clerk/react';
 import App from './App.jsx';
 import './index.css';
 import { registerSW } from 'virtual:pwa-register';
+
+// Clerk publishable key from environment
+const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
 // Register Service Worker with automatic updates
 registerSW({
@@ -23,6 +27,12 @@ registerSW({
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <App />
+    {PUBLISHABLE_KEY ? (
+      <ClerkProvider publishableKey={PUBLISHABLE_KEY} afterSignOutUrl="/">
+        <App />
+      </ClerkProvider>
+    ) : (
+      <App missingClerkKey={true} />
+    )}
   </React.StrictMode>
 );

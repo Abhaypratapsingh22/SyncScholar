@@ -16,9 +16,9 @@
 
 import dns from 'dns';
 try {
-  dns.setServers(['8.8.8.8', '1.1.1.1']);
+  dns.setDefaultResultOrder('ipv4first');
 } catch {
-  // Ignore if custom DNS cannot be configured
+  // Ignore if custom DNS ordering cannot be configured
 }
 import mongoose from 'mongoose';
 import { env } from './src/config/env.js';

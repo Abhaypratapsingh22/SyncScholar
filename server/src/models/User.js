@@ -77,9 +77,9 @@ const userSchema = new Schema(
       lowercase: true,
       required: [
         function () {
-          return !this.roll_number;
+          return !this.roll_number && !this.clerk_id;
         },
-        'Email address is required when roll number is not provided.',
+        'Email address is required when neither roll number nor Clerk ID is provided.',
       ],
       match: [/^\S+@\S+\.\S+$/, 'Please provide a valid email address'],
     },
@@ -90,14 +90,24 @@ const userSchema = new Schema(
       uppercase: true,
       required: [
         function () {
-          return !this.email;
+          return !this.email && !this.clerk_id;
         },
-        'Student roll number is required when email is not provided.',
+        'Student roll number is required when neither email nor Clerk ID is provided.',
       ],
+    },
+    // Clerk user ID for federated authentication
+    clerk_id: {
+      type: String,
+      trim: true,
     },
     password_hash: {
       type: String,
-      required: [true, 'Password hash is required'],
+      required: [
+        function () {
+          return !this.clerk_id;
+        },
+        'Password hash is required when not authenticating via Clerk.',
+      ],
     },
     role: {
       type: String,
@@ -112,6 +122,7 @@ const userSchema = new Schema(
       type: String,
       required: [true, 'School ID is required for multi-tenant classroom partitioning'],
       trim: true,
+      default: 'SCH-MAIN-01',
       index: true,
     },
     // Current grade level (1-12) for curriculum grounding and adaptive pre-filtering
@@ -119,7 +130,7 @@ const userSchema = new Schema(
       type: Number,
       min: [1, 'Minimum grade is 1'],
       max: [12, 'Maximum grade is 12'],
-      default: null,
+      default: 9,
     },
     // Assigned grades for teachers (e.g., [6, 7, 8]) for classroom overview and heatmap filtering
     assigned_grades: {
@@ -174,6 +185,12 @@ userSchema.index({ school_id: 1, role: 1 });
 
 // 4. Optimize aggregation queries for teacher classroom weak-spot heatmaps
 userSchema.index({ 'concept_mastery.learning_objective_id': 1 });
+
+// 5. Ensure Clerk IDs are unique when present
+userSchema.index(
+  { clerk_id: 1 },
+  { unique: true, partialFilterExpression: { clerk_id: { $type: 'string' } } }
+);
 
 export const User = mongoose.model('User', userSchema);
 export default User;

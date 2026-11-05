@@ -2,19 +2,57 @@
  * @file App.jsx
  * @description Root application shell for the SyncScholar Student Workspace.
  * Coordinates Header, Network Status Pill, Curriculum Doubt Tutor, and Assessment views.
+ * Integrates Clerk authentication with local offline-first session fallback.
  */
 
 import React, { useState, useEffect } from 'react';
+import { useUser, useAuth } from '@clerk/react';
 import Header from './components/Header.jsx';
 import TutorView from './components/TutorView.jsx';
 import AssessmentView from './components/AssessmentView.jsx';
 import AuthModal from './components/AuthModal.jsx';
 import MasteryModal from './components/MasteryModal.jsx';
 import { syncService } from './services/syncService.js';
-import { api, getAuthToken, setAuthToken } from './services/api.js';
+import { api, getAuthToken, setAuthToken, setClerkTokenGetter } from './services/api.js';
 import { getLocalStudentSession, saveLocalStudentSession, clearLocalStudentSession } from './db/offlineDb.js';
 
-export function App() {
+const HAS_CLERK_KEY = Boolean(import.meta.env.VITE_CLERK_PUBLISHABLE_KEY);
+
+/**
+ * Bridge component to synchronize Clerk authentication session with local state.
+ * Only rendered when ClerkProvider is active.
+ */
+function ClerkSessionBridge({ onClerkUser, onSignOut }) {
+  const { user, isLoaded, isSignedIn } = useUser();
+  const { getToken } = useAuth();
+
+  useEffect(() => {
+    if (getToken) {
+      setClerkTokenGetter(() => getToken());
+    }
+  }, [getToken]);
+
+  useEffect(() => {
+    if (isLoaded) {
+      if (isSignedIn && user) {
+        const studentProfile = {
+          id: user.id,
+          name: user.fullName || user.firstName || user.username || 'Student',
+          email: user.primaryEmailAddress?.emailAddress,
+          current_grade: 9,
+          school_id: 'SCH-MAIN-01',
+          roll_number: user.id.slice(-6).toUpperCase(),
+          isClerkUser: true,
+        };
+        onClerkUser(studentProfile);
+      }
+    }
+  }, [isLoaded, isSignedIn, user]);
+
+  return null;
+}
+
+export function App({ missingClerkKey = false }) {
   const [currentTab, setCurrentTab] = useState('tutor'); // 'tutor' | 'assessment'
   const [syncState, setSyncState] = useState(syncService.getState());
   const [student, setStudent] = useState(null);
@@ -53,14 +91,13 @@ export function App() {
     };
   }, []);
 
-  // Hydrate session or auto-authenticate default benchmark student only in DEV
+  // Hydrate session from local storage or Dexie (offline-first fallback)
   useEffect(() => {
     async function hydrateSession() {
       try {
         const saved = await getLocalStudentSession();
-        const token = getAuthToken();
 
-        if (saved && saved.profile && token) {
+        if (saved && saved.profile) {
           setStudent(saved.profile);
           if (saved.profile.current_grade) {
             setSelectedGrade(Number(saved.profile.current_grade));
@@ -68,57 +105,12 @@ export function App() {
           return;
         }
 
-        // Clear invalid or tokenless saved session
-        if (saved && !token) {
-          await clearLocalStudentSession();
+        if (!HAS_CLERK_KEY) {
+          setStudent(null);
         }
-
-        // Demo login only enabled when explicit development environment flag is active
-        if (import.meta.env.DEV) {
-          try {
-            const savedGrade = saved?.profile?.current_grade || 9;
-            const targetRoll = savedGrade === 7 ? 'DEMO-G7-HIGH' : 'DEMO-G9-HIGH';
-            let res;
-            try {
-              res = await api.login({
-                roll_number: targetRoll,
-                school_id: 'SCH-DEMO-01',
-                password: 'TestStudent@123',
-              });
-            } catch (loginErr) {
-              // Fallback to DEMO-G7-HIGH if DEMO-G9-HIGH fails
-              res = await api.login({
-                roll_number: 'DEMO-G7-HIGH',
-                school_id: 'SCH-DEMO-01',
-                password: 'TestStudent@123',
-              });
-            }
-
-            if (res?.success && res.user) {
-              const profile = {
-                id: res.user.id || res.user._id,
-                name: res.user.name,
-                current_grade: res.user.current_grade || savedGrade || 9,
-                school_id: res.user.school_id || 'SCH-DEMO-01',
-                roll_number: res.user.roll_number || targetRoll,
-              };
-              setStudent(profile);
-              setSelectedGrade(Number(profile.current_grade));
-              await saveLocalStudentSession({ profile, token: res.token });
-              return;
-            }
-          } catch (demoErr) {
-            console.warn('Could not auto-login demo student in DEV mode:', demoErr);
-          }
-        }
-
-        // Production or unauthenticated reload requires explicit sign-in
-        setStudent(null);
-        setAuthModalOpen(true);
       } catch (err) {
         console.warn('Could not hydrate session:', err);
         setStudent(null);
-        setAuthModalOpen(true);
       }
     }
     hydrateSession();
@@ -126,6 +118,14 @@ export function App() {
 
   const handleTriggerSync = () => {
     syncService.triggerSync();
+  };
+
+  const handleClerkUser = (clerkProfile) => {
+    setStudent(clerkProfile);
+    if (clerkProfile?.current_grade) {
+      setSelectedGrade(Number(clerkProfile.current_grade));
+    }
+    saveLocalStudentSession({ profile: clerkProfile, token: null }).catch(() => {});
   };
 
   const handleAuthSuccess = (newStudent) => {
@@ -147,12 +147,10 @@ export function App() {
         return updated;
       });
 
-      if (getAuthToken()) {
-        try {
-          await api.updateGrade(num);
-        } catch (e) {
-          console.warn('Could not update grade on server:', e);
-        }
+      try {
+        await api.updateGrade(num);
+      } catch (e) {
+        console.warn('Could not update grade on server:', e);
       }
     }
   };
@@ -165,6 +163,18 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+      {/* Clerk session bridge (active when ClerkProvider is configured) */}
+      {HAS_CLERK_KEY && (
+        <ClerkSessionBridge onClerkUser={handleClerkUser} onSignOut={handleLogout} />
+      )}
+
+      {/* Missing Clerk Key Notice for Developer / Setup */}
+      {(!HAS_CLERK_KEY || missingClerkKey) && (
+        <div className="bg-amber-500 text-slate-900 px-4 py-2 text-xs font-semibold text-center flex items-center justify-center gap-2">
+          <span>Clerk Setup: Add your <code className="bg-amber-400 px-1 py-0.5 rounded">VITE_CLERK_PUBLISHABLE_KEY</code> to <code className="bg-amber-400 px-1 py-0.5 rounded">client/.env</code> to activate online authentication.</span>
+        </div>
+      )}
+
       {/* Persistent Top Header with Network & Sync Status Pill */}
       <Header
         student={student}
@@ -176,6 +186,7 @@ export function App() {
         onUpdateGrade={handleUpdateGrade}
         currentTab={currentTab}
         onSelectTab={setCurrentTab}
+        hasClerkKey={HAS_CLERK_KEY}
       />
 
       {/* Main Workspace Body */}

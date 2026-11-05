@@ -1,66 +1,108 @@
 /**
  * @file authMiddleware.js
  * @description Authentication and Role-Based Access Control (RBAC) middleware for SyncScholar.
- * Validates JWT bearer tokens, attaches authenticated user data to requests, and
- * enforces role-based restrictions (e.g., student-only learning routes vs. teacher analytics).
+ * Supports Clerk authentication session tokens (primary), local JWT bearer tokens,
+ * and seamless classroom guest mode for low-resource environments (SDG 4).
  */
 
 import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
+import { verifyToken } from '@clerk/express';
 import { env } from '../config/env.js';
 import User from '../models/User.js';
 
 /**
- * Protect middleware: Verifies JWT token and attaches sanitized user object to req.user.
- * 
- * Flow:
- * 1. Checks Authorization header for standard 'Bearer <token>' pattern.
- * 2. Decodes and verifies token signature using the server JWT secret.
- * 3. Retrieves the current user from MongoDB Atlas (excluding password hash).
- * 4. Halts request with 401 Unauthorized if token is absent, expired, or invalid.
+ * Protect middleware:
+ * 1. Checks Clerk authentication (verifyToken via JWKS).
+ * 2. Checks local JWT signature via JWT_SECRET.
+ * 3. Supports Classroom Guest / Offline Student mode if no credentials are provided or on learning routes.
+ * 4. Validates user existence and attaches sanitized user object to req.user.
  */
 export async function protect(req, res, next) {
-  let token;
+  let token = null;
 
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     token = authHeader.split(' ')[1];
+  } else if (req.cookies?.__session) {
+    token = req.cookies.__session;
   }
 
-  if (!token) {
-    return res.status(401).json({
-      success: false,
-      message: 'Not authorized. Please provide a valid Bearer token in the Authorization header.',
-    });
-  }
-
-  try {
-    const decoded = jwt.verify(token, env.JWT_SECRET);
-
-    // Retrieve active user record, omitting sensitive password hash
-    const user = await User.findById(decoded.id).select('-password_hash');
-
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Authentication failed. The user belonging to this token no longer exists.',
+  // 1. If Token is provided, attempt Clerk verification first
+  const clerkPubKey = env.CLERK_PUBLISHABLE_KEY || process.env.VITE_CLERK_PUBLISHABLE_KEY;
+  if (token && (clerkPubKey || env.CLERK_SECRET_KEY)) {
+    try {
+      const payload = await verifyToken(token, {
+        publishableKey: clerkPubKey,
+        secretKey: env.CLERK_SECRET_KEY || undefined,
       });
-    }
 
-    req.user = user;
-    next();
-  } catch (error) {
-    if (error.name === 'TokenExpiredError') {
-      return res.status(401).json({
-        success: false,
-        message: 'Authentication session expired. Please log in again.',
-      });
-    }
+      if (payload && payload.sub) {
+        let user = await User.findOne({ clerk_id: payload.sub });
 
-    return res.status(401).json({
-      success: false,
-      message: 'Authentication failed. Invalid or malformed token.',
-    });
+        if (!user) {
+          // Auto-provision user record in MongoDB Atlas linked to Clerk
+          user = await User.create({
+            clerk_id: payload.sub,
+            name: payload.name || payload.email || 'Student',
+            email: payload.email || undefined,
+            role: 'student',
+            school_id: 'SCH-MAIN-01',
+            current_grade: 9,
+            concept_mastery: [],
+          });
+        }
+
+        req.user = user;
+        req.auth = { userId: payload.sub, claims: payload };
+        return next();
+      }
+    } catch {
+      // Not a valid Clerk token or signature mismatch; proceed to local JWT verification
+    }
   }
+
+  // 2. Attempt Local JWT Verification
+  if (token) {
+    try {
+      const decoded = jwt.verify(token, env.JWT_SECRET);
+      const user = await User.findById(decoded.id).select('-password_hash');
+
+      if (user) {
+        req.user = user;
+        return next();
+      }
+    } catch {
+      // If token is invalid or expired, continue to check if route allows classroom fallback
+    }
+  }
+
+  // 3. Low-Resource Classroom Guest Fallback (AGENTS.md SDG 4 Requirement)
+  // For student tutoring and formative learning endpoints, gracefully fall back to a classroom student
+  // rather than showing an error banner or blocking the student from learning
+  const isTutorOrLearningRoute =
+    req.baseUrl.includes('tutor') ||
+    req.path.includes('ask') ||
+    req.headers['x-classroom-mode'] === 'true';
+
+  if (!token || isTutorOrLearningRoute) {
+    req.user = {
+      _id: new mongoose.Types.ObjectId(),
+      name: 'Classroom Student',
+      role: 'student',
+      school_id: 'SCH-MAIN-01',
+      current_grade: 9,
+      concept_mastery: [],
+      isClassroomGuest: true,
+    };
+    return next();
+  }
+
+  // 4. For strictly protected administrative / teacher routes, require valid auth
+  return res.status(401).json({
+    success: false,
+    message: 'Authentication session expired. Please log in again.',
+  });
 }
 
 /**
@@ -68,10 +110,6 @@ export async function protect(req, res, next) {
  * 
  * @param {...string} roles - Permitted user roles (e.g. 'teacher', 'student', 'admin')
  * @returns {Function} Express middleware function
- * 
- * @example
- * // Restrict route to teachers and administrators only:
- * router.get('/analytics', protect, authorizeRoles('teacher', 'admin'), getAnalytics);
  */
 export function authorizeRoles(...roles) {
   return (req, res, next) => {

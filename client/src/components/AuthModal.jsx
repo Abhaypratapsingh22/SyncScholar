@@ -1,120 +1,36 @@
 /**
  * @file AuthModal.jsx
- * @description Fast, classroom-optimized student authentication & switcher modal.
- * Includes 1-click verified Demo Students (High Mastery vs Remediation Mode) for instant evaluation.
+ * @description Authentication modal for SyncScholar.
+ * Integrates Clerk authentication for online multi-tenant access while supporting
+ * local offline classroom mode for low-resource environments (SDG 4).
  */
 
 import React, { useState } from 'react';
+import { SignIn, SignUp, useUser, useClerk } from '@clerk/react';
 import { api, setAuthToken } from '../services/api.js';
 import { saveLocalStudentSession, rebindPendingQuizSubmissions } from '../db/offlineDb.js';
 import { syncService } from '../services/syncService.js';
-import { User, LogIn, Sparkles, X, Shield, Check, Layers, AlertCircle } from 'lucide-react';
+import { User, LogIn, X, Shield, AlertCircle, WifiOff } from 'lucide-react';
 
-const DEMO_STUDENTS = [
-  {
-    name: 'Kabir Rao',
-    rollNumber: 'DEMO-G9-HIGH',
-    schoolId: 'SCH-DEMO-01',
-    password: 'TestStudent@123',
-    grade: 9,
-    tag: 'Class 9 Science (NCERT)',
-    badgeColor: 'bg-indigo-100 text-indigo-800 border-indigo-200',
-    description: 'Class 9 Science (Sound Waves, Cell, Motion, Atoms) Socratic Tutoring',
-  },
-  {
-    name: 'Aarav Sharma',
-    rollNumber: 'DEMO-G7-HIGH',
-    schoolId: 'SCH-DEMO-01',
-    password: 'TestStudent@123',
-    grade: 7,
-    tag: 'High Mastery (85%)',
-    badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-    description: 'Direct Grade 7 Socratic hints (remediation inactive)',
-  },
-  {
-    name: 'Priya Patel',
-    rollNumber: 'DEMO-G7-LOW',
-    schoolId: 'SCH-DEMO-01',
-    password: 'TestStudent@123',
-    grade: 7,
-    tag: 'Needs Remediation (35%)',
-    badgeColor: 'bg-amber-100 text-amber-800 border-amber-200',
-    description: 'Triggers Prerequisite Foundation Mode (Grade 6 bridge)',
-  },
-];
+const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
 export function AuthModal({ currentStudent, onAuthSuccess, onLogout, onClose }) {
-  const [activeTab, setActiveTab] = useState('demo'); // 'demo' | 'login' | 'register'
+  const [authMode, setAuthMode] = useState('sign-in'); // 'sign-in' | 'sign-up' | 'offline' | 'roll'
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
 
-  // Form states
-  const [identifier, setIdentifier] = useState('');
-  const [schoolId, setSchoolId] = useState('SCH-DEMO-01');
+  // Roll-number login states
+  const [rollNumber, setRollNumber] = useState('');
+  const [schoolId, setSchoolId] = useState('SCH-MAIN-01');
   const [password, setPassword] = useState('');
 
-  // Register form states
-  const [regName, setRegName] = useState('');
-  const [regRoll, setRegRoll] = useState('');
-  const [regGrade, setRegGrade] = useState(7);
-
-  const handleDemoSelect = async (demo) => {
-    setLoading(true);
-    setErrorMessage(null);
-    try {
-      const res = await api.login({
-        roll_number: demo.rollNumber,
-        school_id: demo.schoolId,
-        password: demo.password,
-      });
-
-      if (res?.success && res.user) {
-        const studentObj = {
-          id: res.user.id || res.user._id,
-          name: res.user.name,
-          current_grade: res.user.current_grade || demo.grade,
-          school_id: res.user.school_id || demo.schoolId,
-          roll_number: demo.rollNumber,
-        };
-        await rebindPendingQuizSubmissions(studentObj.roll_number, studentObj.id);
-        await saveLocalStudentSession({ profile: studentObj, token: res.token });
-        onAuthSuccess(studentObj);
-        onClose();
-        syncService.triggerSync();
-      } else {
-        throw new Error(res?.message || 'Login failed');
-      }
-    } catch (err) {
-      if (!err.isOffline && !err.isTimeout) {
-        setErrorMessage(err.message || 'Demo login failed. Please check credentials or network.');
-        return;
-      }
-      console.warn('Demo login network fallback:', err);
-      // Clear any prior user's token before storing an offline fallback profile
-      setAuthToken(null);
-      const offlineProfile = {
-        id: `offline-${demo.rollNumber}`,
-        name: demo.name,
-        current_grade: demo.grade,
-        school_id: demo.schoolId,
-        roll_number: demo.rollNumber,
-        isLocalOffline: true,
-      };
-      await saveLocalStudentSession({ profile: offlineProfile, token: null });
-      onAuthSuccess(offlineProfile);
-      onClose();
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Offline guest login
   const handleOfflineGuest = async () => {
-    // Clear any active token when choosing local offline guest mode
     setAuthToken(null);
     const guestStudent = {
       id: 'local-offline-guest',
-      name: 'Classroom Offline Guest',
-      current_grade: 7,
+      name: 'Classroom Offline Student',
+      current_grade: 9,
       school_id: 'SCH-LOCAL-01',
       roll_number: 'LOCAL-GUEST',
       isLocalOffline: true,
@@ -124,16 +40,17 @@ export function AuthModal({ currentStudent, onAuthSuccess, onLogout, onClose }) 
     onClose();
   };
 
-  const handleManualLogin = async (e) => {
+  // Roll number & School ID direct login fallback
+  const handleRollLogin = async (e) => {
     e.preventDefault();
-    if (!identifier.trim() || !password) return;
+    if (!rollNumber.trim() || !password) return;
 
     setLoading(true);
     setErrorMessage(null);
 
     try {
       const res = await api.login({
-        identifier: identifier.trim(),
+        roll_number: rollNumber.trim(),
         school_id: schoolId.trim(),
         password,
       });
@@ -142,9 +59,9 @@ export function AuthModal({ currentStudent, onAuthSuccess, onLogout, onClose }) 
         const studentObj = {
           id: res.user.id || res.user._id,
           name: res.user.name,
-          current_grade: res.user.current_grade || 7,
+          current_grade: res.user.current_grade || 9,
           school_id: res.user.school_id || schoolId,
-          roll_number: res.user.roll_number || identifier,
+          roll_number: res.user.roll_number || rollNumber,
         };
         await rebindPendingQuizSubmissions(studentObj.roll_number, studentObj.id);
         await saveLocalStudentSession({ profile: studentObj, token: res.token });
@@ -161,49 +78,9 @@ export function AuthModal({ currentStudent, onAuthSuccess, onLogout, onClose }) 
     }
   };
 
-  const handleRegister = async (e) => {
-    e.preventDefault();
-    if (!regName.trim() || !regRoll.trim() || !password) return;
-
-    setLoading(true);
-    setErrorMessage(null);
-
-    try {
-      const res = await api.register({
-        name: regName.trim(),
-        roll_number: regRoll.trim(),
-        school_id: schoolId.trim(),
-        role: 'student',
-        current_grade: parseInt(regGrade, 10),
-        password,
-      });
-
-      if (res?.success && res.user) {
-        const studentObj = {
-          id: res.user.id || res.user._id,
-          name: res.user.name,
-          current_grade: res.user.current_grade || regGrade,
-          school_id: res.user.school_id || schoolId,
-          roll_number: regRoll.trim(),
-        };
-        await rebindPendingQuizSubmissions(studentObj.roll_number, studentObj.id);
-        await saveLocalStudentSession({ profile: studentObj, token: res.token });
-        onAuthSuccess(studentObj);
-        onClose();
-        syncService.triggerSync();
-      } else {
-        throw new Error(res?.message || 'Registration failed');
-      }
-    } catch (err) {
-      setErrorMessage(err.message || 'Registration failed.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-      <div className="classroom-card w-full max-w-lg p-6 bg-white shadow-xl animate-fadeIn">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
+      <div className="classroom-card w-full max-w-lg p-6 bg-white shadow-xl animate-fadeIn my-8">
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-slate-200">
           <div className="flex items-center gap-2.5">
@@ -211,8 +88,8 @@ export function AuthModal({ currentStudent, onAuthSuccess, onLogout, onClose }) 
               <User className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900">Student Profile Switcher</h2>
-              <p className="text-xs text-slate-500">Sign in to track your mastery or choose a test profile</p>
+              <h2 className="text-base font-bold text-slate-900">Student & Teacher Authentication</h2>
+              <p className="text-xs text-slate-500">Sign in securely via Clerk or use Classroom Offline Mode</p>
             </div>
           </div>
 
@@ -226,111 +103,155 @@ export function AuthModal({ currentStudent, onAuthSuccess, onLogout, onClose }) 
           </button>
         </div>
 
-        {/* Tab switcher */}
+        {/* Auth Mode Tabs */}
         <div className="flex p-1 bg-slate-100 rounded-xl my-4 text-xs font-semibold">
           <button
             type="button"
             onClick={() => {
-              setActiveTab('demo');
+              setAuthMode('sign-in');
               setErrorMessage(null);
             }}
             className={`btn-touch flex-1 py-1.5 rounded-lg transition-all ${
-              activeTab === 'demo' ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-600'
+              authMode === 'sign-in' ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-600'
             }`}
           >
-            Demo Profiles (1-Click)
+            Clerk Sign In
           </button>
           <button
             type="button"
             onClick={() => {
-              setActiveTab('login');
+              setAuthMode('sign-up');
               setErrorMessage(null);
             }}
             className={`btn-touch flex-1 py-1.5 rounded-lg transition-all ${
-              activeTab === 'login' ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-600'
+              authMode === 'sign-up' ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-600'
             }`}
           >
-            Student Sign In
+            Clerk Sign Up
           </button>
           <button
             type="button"
             onClick={() => {
-              setActiveTab('register');
+              setAuthMode('offline');
               setErrorMessage(null);
             }}
             className={`btn-touch flex-1 py-1.5 rounded-lg transition-all ${
-              activeTab === 'register' ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-600'
+              authMode === 'offline' ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-600'
             }`}
           >
-            Register
+            Offline Mode
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setAuthMode('roll');
+              setErrorMessage(null);
+            }}
+            className={`btn-touch flex-1 py-1.5 rounded-lg transition-all ${
+              authMode === 'roll' ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-600'
+            }`}
+          >
+            Roll ID
           </button>
         </div>
 
-        {/* Error notice */}
         {errorMessage && (
-          <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 text-rose-600 mt-0.5 flex-shrink-0" />
+          <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2.5 text-rose-800 text-xs">
+            <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
             <span>{errorMessage}</span>
           </div>
         )}
 
-        {/* TAB 1: 1-CLICK DEMO PROFILES */}
-        {activeTab === 'demo' && (
-          <div className="space-y-3">
-            <p className="text-xs text-slate-700">
-              Select a benchmark student profile to test adaptive RAG and foundation mode:
-            </p>
-
-            {DEMO_STUDENTS.map((demo, idx) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => handleDemoSelect(demo)}
-                disabled={loading}
-                className="btn-touch w-full p-3.5 text-left rounded-xl border border-slate-200 hover:border-brand-500 bg-white hover:bg-brand-50/40 transition-all flex items-start justify-between gap-3 group"
-              >
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-bold text-sm text-slate-900 group-hover:text-brand-700">
-                      {demo.name}
-                    </span>
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${demo.badgeColor}`}>
-                      {demo.tag}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 leading-snug">{demo.description}</p>
+        {/* Tab 1: Clerk Sign In */}
+        {authMode === 'sign-in' && (
+          <div className="flex justify-center py-2">
+            {PUBLISHABLE_KEY ? (
+              <SignIn
+                appearance={{
+                  elements: {
+                    rootBox: 'w-full',
+                    card: 'shadow-none border-0 p-0 w-full',
+                  },
+                }}
+              />
+            ) : (
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-center space-y-2">
+                <Shield className="w-8 h-8 text-amber-600 mx-auto" />
+                <h3 className="font-bold text-sm text-slate-800">Clerk Publishable Key Required</h3>
+                <p className="text-xs text-slate-600">
+                  To complete Clerk sign-in, add <code className="bg-amber-100 px-1 py-0.5 rounded">VITE_CLERK_PUBLISHABLE_KEY</code> to <code className="bg-amber-100 px-1 py-0.5 rounded">client/.env</code>.
+                </p>
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={handleOfflineGuest}
+                    className="btn-touch px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-bold"
+                  >
+                    Continue in Classroom Mode
+                  </button>
                 </div>
-                <div className="text-xs font-bold text-brand-600 mt-1 flex items-center gap-1">
-                  <span>Select</span>
-                  <span>→</span>
-                </div>
-              </button>
-            ))}
-
-            <div className="pt-2">
-              <button
-                type="button"
-                onClick={handleOfflineGuest}
-                className="btn-touch w-full py-2.5 text-xs text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-xl font-semibold flex items-center justify-center gap-2"
-              >
-                <span>Continue as Local Offline Student (No Login Required)</span>
-              </button>
-            </div>
+              </div>
+            )}
           </div>
         )}
 
-        {/* TAB 2: MANUAL LOGIN */}
-        {activeTab === 'login' && (
-          <form onSubmit={handleManualLogin} className="space-y-3.5">
+        {/* Tab 2: Clerk Sign Up */}
+        {authMode === 'sign-up' && (
+          <div className="flex justify-center py-2">
+            {PUBLISHABLE_KEY ? (
+              <SignUp
+                appearance={{
+                  elements: {
+                    rootBox: 'w-full',
+                    card: 'shadow-none border-0 p-0 w-full',
+                  },
+                }}
+              />
+            ) : (
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-center space-y-2">
+                <Shield className="w-8 h-8 text-amber-600 mx-auto" />
+                <h3 className="font-bold text-sm text-slate-800">Clerk Publishable Key Required</h3>
+                <p className="text-xs text-slate-600">
+                  Please configure <code className="bg-amber-100 px-1 py-0.5 rounded">VITE_CLERK_PUBLISHABLE_KEY</code> to enable account registration.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab 3: Offline Classroom Mode */}
+        {authMode === 'offline' && (
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+            <div className="flex items-center gap-2 text-slate-800">
+              <WifiOff className="w-5 h-5 text-brand-600" />
+              <h3 className="font-bold text-sm">Offline Local Classroom</h3>
+            </div>
+            <p className="text-xs text-slate-600">
+              For low-bandwidth rural classrooms with intermittent or no connectivity. Quizzes and flashcards are cached in IndexedDB and sync automatically when internet returns.
+            </p>
+            <button
+              type="button"
+              onClick={handleOfflineGuest}
+              className="btn-touch w-full py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl text-xs shadow-sm flex items-center justify-center gap-2"
+            >
+              <LogIn className="w-4 h-4" />
+              <span>Enter as Offline Student (Class 9)</span>
+            </button>
+          </div>
+        )}
+
+        {/* Tab 4: School Roll Number Direct Login */}
+        {authMode === 'roll' && (
+          <form onSubmit={handleRollLogin} className="space-y-3">
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                Roll Number or Email:
+                Student Roll Number:
               </label>
               <input
                 type="text"
-                value={identifier}
-                onChange={(e) => setIdentifier(e.target.value)}
-                placeholder="e.g. DEMO-G7-HIGH or student@school.edu"
+                value={rollNumber}
+                onChange={(e) => setRollNumber(e.target.value)}
+                placeholder="e.g. ROLL-01"
                 className="w-full min-h-[44px] px-3 py-2 text-sm border border-slate-300 rounded-lg text-slate-900"
                 required
               />
@@ -344,7 +265,7 @@ export function AuthModal({ currentStudent, onAuthSuccess, onLogout, onClose }) 
                 type="text"
                 value={schoolId}
                 onChange={(e) => setSchoolId(e.target.value)}
-                placeholder="e.g. SCH-DEMO-01"
+                placeholder="e.g. SCH-MAIN-01"
                 className="w-full min-h-[44px] px-3 py-2 text-sm border border-slate-300 rounded-lg text-slate-900"
                 required
               />
@@ -368,81 +289,7 @@ export function AuthModal({ currentStudent, onAuthSuccess, onLogout, onClose }) 
               disabled={loading}
               className="btn-touch w-full py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl text-sm shadow-sm"
             >
-              {loading ? 'Authenticating...' : 'Sign In'}
-            </button>
-          </form>
-        )}
-
-        {/* TAB 3: REGISTER */}
-        {activeTab === 'register' && (
-          <form onSubmit={handleRegister} className="space-y-3">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Full Name:</label>
-              <input
-                type="text"
-                value={regName}
-                onChange={(e) => setRegName(e.target.value)}
-                placeholder="Student Name"
-                className="w-full min-h-[44px] px-3 py-2 text-sm border border-slate-300 rounded-lg text-slate-900"
-                required
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Roll Number:</label>
-                <input
-                  type="text"
-                  value={regRoll}
-                  onChange={(e) => setRegRoll(e.target.value)}
-                  placeholder="e.g. ROLL-01"
-                  className="w-full min-h-[44px] px-3 py-2 text-sm border border-slate-300 rounded-lg text-slate-900"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Grade (1-12):</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="12"
-                  value={regGrade}
-                  onChange={(e) => setRegGrade(e.target.value)}
-                  className="w-full min-h-[44px] px-3 py-2 text-sm border border-slate-300 rounded-lg text-slate-900"
-                  required
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">School ID:</label>
-              <input
-                type="text"
-                value={schoolId}
-                onChange={(e) => setSchoolId(e.target.value)}
-                className="w-full min-h-[44px] px-3 py-2 text-sm border border-slate-300 rounded-lg text-slate-900"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Password:</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full min-h-[44px] px-3 py-2 text-sm border border-slate-300 rounded-lg text-slate-900"
-                required
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="btn-touch w-full py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl text-sm shadow-sm"
-            >
-              {loading ? 'Creating Account...' : 'Register Student'}
+              {loading ? 'Authenticating...' : 'Sign In with Roll Number'}
             </button>
           </form>
         )}

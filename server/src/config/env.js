@@ -93,6 +93,15 @@ export function validateEnv() {
     });
   }
 
+  // 5. CLERK keys warning/validation
+  const clerkSecret = process.env.CLERK_SECRET_KEY;
+  if (!clerkSecret) {
+    warnings.push({
+      variable: 'CLERK_SECRET_KEY',
+      warning: 'Clerk Secret Key is not configured in server/.env. API requests requiring Clerk authentication will fail.',
+    });
+  }
+
   // If any fatal validation errors exist, display friendly formatted diagnostic and terminate process
   if (errors.length > 0) {
     console.error('\n' + '='.repeat(80));
@@ -144,4 +153,6 @@ export const env = {
   get GEMINI_API_KEY() { return process.env.GEMINI_API_KEY; },
   get JWT_SECRET() { return process.env.JWT_SECRET; },
   get CLIENT_URL() { return process.env.CLIENT_URL || 'http://localhost:5173'; },
+  get CLERK_PUBLISHABLE_KEY() { return process.env.CLERK_PUBLISHABLE_KEY; },
+  get CLERK_SECRET_KEY() { return process.env.CLERK_SECRET_KEY; },
 };

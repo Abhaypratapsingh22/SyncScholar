@@ -6,6 +6,7 @@
 
 import express from 'express';
 import cors from 'cors';
+import { clerkMiddleware } from '@clerk/express';
 import { env } from './config/env.js';
 import { getDBStatus } from './config/db.js';
 
@@ -38,6 +39,15 @@ app.use(
 // Low-Bandwidth Empathy: Parse JSON payloads with reasonable size boundaries (1MB max)
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+
+// Clerk authentication middleware for Express (active when secret key is provided)
+if (process.env.CLERK_SECRET_KEY) {
+  try {
+    app.use(clerkMiddleware());
+  } catch (err) {
+    console.warn('[Clerk] Warning initializing clerkMiddleware:', err.message);
+  }
+}
 
 // Request logging in development
 if (env.NODE_ENV === 'development') {
