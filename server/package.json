@@ -20,6 +20,7 @@
   "author": "SyncScholar Team",
   "license": "MIT",
   "dependencies": {
+    "@clerk/express": "^2.1.87",
     "@google/genai": "^2.31.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",

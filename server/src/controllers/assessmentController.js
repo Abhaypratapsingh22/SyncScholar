@@ -157,13 +157,21 @@ export async function getStudentQuizHistory(req, res) {
     const { learning_objective_id, limit = 10 } = req.query;
     const query = { student_id: req.user._id };
 
-    if (learning_objective_id) {
-      query.learning_objective_id = new RegExp(`^${learning_objective_id}$`, 'i');
+    if (learning_objective_id && typeof learning_objective_id === 'string') {
+      const escapedLoId = learning_objective_id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      query.learning_objective_id = new RegExp(`^${escapedLoId}$`, 'i');
+    }
+
+    let parsedLimit = parseInt(limit, 10);
+    if (isNaN(parsedLimit) || parsedLimit <= 0) {
+      parsedLimit = 10;
+    } else if (parsedLimit > 100) {
+      parsedLimit = 100;
     }
 
     const attempts = await QuizAttempt.find(query)
       .sort({ createdAt: -1 })
-      .limit(Number(limit))
+      .limit(parsedLimit)
       .lean();
 
     return res.status(200).json({

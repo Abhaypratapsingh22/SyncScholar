@@ -1,0 +1,874 @@
+Read `AGENTS.md` first and adhere strictly to its Architecture Guidelines, Development Philosophy, and Library Permission Gate. Do not install `@google/genai` or `llamaindex` packages until you explain them and receive my approval.
+
+# MASTER PROMPT: SyncScholar Chatbot Red-Team Testing, Failure Analysis & Root-Cause Audit
+
+## 1. ROLE AND OBJECTIVE
+
+Act as a Senior AI Quality Assurance Engineer, RAG Evaluation Specialist, Educational Content Tester, and Red-Team Testing Agent.
+
+Your responsibility is to aggressively test the existing **SyncScholar AI chatbot** and identify as many genuine weaknesses, incorrect responses, failures, and architectural problems as possible.
+
+Your testing must be failure-oriented.
+
+Do not simply ask a few questions and conclude that the chatbot works. Your objective is to continuously challenge the chatbot using different question types, wording variations, difficulty levels, numerical problems, conceptual questions, and real-world scenarios.
+
+You must actively attempt to make the chatbot fail.
+
+**IMPORTANT:**
+
+- The testing scope is strictly limited to **NCERT Class 9 Science**.
+- Do not test other classes or subjects.
+- Do not modify the existing chatbot implementation.
+- Do not fix bugs during this testing phase.
+- Do not silently change configurations, prompts, database records, or API settings.
+- Your responsibility is to identify, reproduce, document, and classify failures.
+- All identified issues must be recorded in a `.txt` file for a separate development and debugging phase.
+
+The final objective is to produce a comprehensive failure report that developers can use to fix SyncScholar systematically.
+
+---
+
+# 2. UNDERSTAND THE EXISTING SYSTEM BEFORE TESTING
+
+Before starting the tests, inspect the existing SyncScholar project and understand its architecture.
+
+Identify:
+
+1. Frontend chatbot implementation.
+2. Backend API and request-handling logic.
+3. Gemini API integration.
+4. MongoDB database connection.
+5. Stored Class 9 Science textbook content.
+6. RAG implementation, if available.
+7. Document chunking strategy.
+8. Embedding generation mechanism.
+9. Vector search implementation.
+10. Retrieval and metadata-filtering logic.
+11. Prompt construction and context injection.
+12. Response generation and formatting.
+13. Error handling and fallback mechanisms.
+
+Trace the actual question-answering workflow.
+
+Determine whether the chatbot genuinely follows this pipeline:
+
+Student Question → Backend → Query Embedding → MongoDB Vector Search → Relevant Context Retrieval → Prompt Augmentation → Gemini API → Generated Answer → Frontend.
+
+Do not assume that a component exists simply because the project documentation mentions it.
+
+Verify actual implementation through source code, configuration, logs, and observable runtime behavior.
+
+If any component is missing, incorrectly connected, or bypassed, document it as a potential architectural defect.
+
+---
+
+# 3. TESTING CATEGORIES
+
+Perform extensive testing across the following categories.
+
+## Category A: Numerical Problem-Solving Tests
+
+This is one of the highest-priority testing categories.
+
+Test whether SyncScholar can correctly understand and solve numerical questions from NCERT Class 9 Science.
+
+Cover numerical problems from relevant chapters, including:
+
+- Motion
+- Force and Laws of Motion
+- Gravitation
+- Work and Energy
+- Sound
+- Atoms and Molecules
+- Structure of the Atom
+- Other chapters containing mathematical calculations.
+
+### Test different numerical variations:
+
+1. Direct formula-based numerical questions.
+2. Multi-step calculations.
+3. Questions requiring unit conversion.
+4. Questions involving SI units.
+5. Questions containing decimal values.
+6. Questions involving fractions.
+7. Questions involving negative values.
+8. Questions requiring rearrangement of formulas.
+9. Questions involving multiple scientific quantities.
+10. Word problems requiring identification of known and unknown variables.
+11. Questions with missing information.
+12. Questions containing unnecessary information.
+13. Questions with misleading numerical values.
+14. Questions involving scientific notation.
+15. Questions requiring interpretation of a table or given data.
+
+### Example test cases
+
+**Test 1: Direct numerical**
+
+"A car travels 120 metres in 10 seconds. Calculate its speed."
+
+Expected:
+- Identify distance and time.
+- Apply speed = distance / time.
+- Calculate 12 m/s.
+- Provide the correct unit.
+
+**Test 2: Multi-step numerical**
+
+"A body starts from rest and accelerates uniformly at 2 m/s² for 5 seconds. Calculate its final velocity and distance travelled."
+
+Expected:
+- Identify initial velocity, acceleration, and time.
+- Apply the correct equations of motion.
+- Calculate both answers accurately.
+- Show the calculation steps.
+
+**Test 3: Unit conversion**
+
+"Convert 72 km/h into metres per second."
+
+Expected: 20 m/s.
+
+**Test 4: Missing information**
+
+"A car travels a certain distance. Calculate its speed."
+
+Expected:
+- Identify insufficient information.
+- Ask for the missing distance and time.
+- Do not invent numerical values.
+
+**Failure conditions:**
+
+- Incorrect formula selection.
+- Incorrect substitution.
+- Incorrect arithmetic.
+- Incorrect unit conversion.
+- Incorrect final answer.
+- Missing calculation steps.
+- Hallucinated values.
+- Confidently presenting an incorrect solution.
+- Failing to recognize insufficient information.
+
+Record every failure and its exact input and output.
+
+## Category B: Theoretical Explanation Tests
+
+Test whether SyncScholar provides explanations appropriate for a Class 9 student.
+
+The chatbot should not merely provide textbook definitions. It should explain concepts in understandable language.
+
+Test:
+
+1. Definition-based questions.
+2. Conceptual questions.
+3. Why-based questions.
+4. How-based questions.
+5. Difference-between questions.
+6. Explain-with-example questions.
+7. Cause-and-effect questions.
+8. Application-based questions.
+9. Real-world examples.
+10. Hypothetical questions.
+11. Multi-concept questions.
+12. Questions requiring step-by-step explanations.
+
+### Example test cases
+
+- Why does evaporation cause cooling?
+- Why can we smell perfume from a distance?
+- Why does a passenger fall forward when a moving bus suddenly stops?
+- Explain the difference between mass and weight.
+- Why does sound require a medium to travel?
+- Why do we see lightning before hearing thunder?
+- Explain the law of conservation of mass with an example.
+- What happens to the kinetic energy of an object when its speed doubles?
+
+### Failure conditions:
+
+- Explanation is scientifically incorrect.
+- Explanation is too complicated for Class 9.
+- Explanation is too basic to answer the question.
+- Important conceptual steps are missing.
+- Incorrect examples are provided.
+- The response does not answer the actual question.
+- Important terminology is not explained.
+- The chatbot simply repeats textbook text without explaining it.
+- The explanation contains irrelevant information.
+- The answer introduces concepts beyond the expected syllabus without justification.
+
+## Category C: Question-Wording Variation Tests
+
+Test whether SyncScholar understands the same question when it is expressed in different ways.
+
+For every important concept, generate multiple variations.
+
+For example, consider the concept of inertia.
+
+Variation 1:
+"What is inertia?"
+
+Variation 2:
+"Why does a passenger fall forward when a bus suddenly stops?"
+
+Variation 3:
+"Explain why our body moves forward when a moving vehicle suddenly applies brakes."
+
+Variation 4:
+"What is the scientific reason behind passengers falling forward when a moving bus stops?"
+
+Variation 5:
+"Can you explain inertia using a real-life example?"
+
+Variation 6:
+"Why doesn't our body immediately stop when the vehicle stops?"
+
+Check whether the chatbot understands that these questions are related to the same underlying concept.
+
+Test:
+
+- Formal English.
+- Informal English.
+- Short questions.
+- Long questions.
+- Questions containing grammatical mistakes.
+- Questions containing spelling mistakes.
+- Questions using synonyms.
+- Questions using conversational language.
+- Questions with unnecessary background information.
+- Questions with multiple concepts in one sentence.
+
+**Objective:** Identify whether the chatbot relies excessively on exact keyword matching instead of understanding the semantic meaning of questions.
+
+## Category D: Out-of-Context and Application-Based Questions
+
+Test whether the chatbot can apply textbook knowledge to situations that are not directly mentioned in the textbook.
+
+Examples:
+
+- What might happen to coastal cities in India if glaciers and polar ice keep melting faster?
+- Why do astronauts appear weightless in space?
+- Why do wet clothes dry faster on a windy day?
+- Why is it difficult to stop a moving truck compared with a bicycle?
+- What would happen if friction suddenly disappeared?
+- Why does a metal spoon become hot when placed in hot tea?
+- How does sound travel through water?
+
+The answer should use broader scientific knowledge when necessary while maintaining Class 9-level understanding.
+
+**Failure conditions:**
+
+- Chatbot refuses to answer because the exact question is not in the textbook.
+- It invents textbook references.
+- It produces university-level explanations unnecessarily.
+- It provides scientifically incorrect information.
+- It fails to connect the question to relevant concepts.
+- It gives an answer that is unrelated to the student's learning level.
+
+## Category E: RAG and Retrieval Accuracy Tests
+
+Determine whether SyncScholar retrieves the correct educational content from MongoDB.
+
+Test:
+
+1. Questions directly covered in the textbook.
+2. Questions indirectly related to textbook concepts.
+3. Questions using synonyms instead of textbook terminology.
+4. Questions involving multiple chapters.
+5. Questions containing related but different concepts.
+6. Questions with ambiguous terminology.
+7. Questions requiring a specific formula.
+8. Questions requiring a definition and an example.
+9. Questions that are not covered in the stored textbook content.
+10. Questions containing misleading keywords.
+
+For each test, investigate:
+
+- Was a query embedding generated?
+- Was the correct embedding model used?
+- Was MongoDB Vector Search executed?
+- Were the correct chunks retrieved?
+- Were the chunks relevant to the question?
+- Were class and subject filters applied?
+- Was the retrieved context included in the Gemini prompt?
+- Did the generated answer actually use the relevant information?
+
+### Retrieval-specific failure conditions
+
+- No relevant chunks retrieved.
+- Irrelevant chunks retrieved.
+- Wrong chapter retrieved.
+- Wrong class retrieved.
+- Duplicate chunks retrieved.
+- Important chunks excluded.
+- Correct chunks retrieved but ignored by Gemini.
+- Query embedding is missing or incorrectly generated.
+- Vector search is not executed.
+- Metadata filters are incorrect.
+- Retrieval returns empty results despite relevant content existing in MongoDB.
+
+Do not assume that an incorrect answer automatically means a retrieval problem. Investigate the complete pipeline to identify the actual failure stage.
+
+## Category F: Gemini API Integration Verification
+
+A major testing objective is to verify whether SyncScholar genuinely uses the Gemini API to generate answers.
+
+Do not assume that the chatbot uses Gemini simply because the response looks AI-generated.
+
+Investigate the actual runtime behavior.
+
+### Verification steps
+
+1. Inspect the backend code to identify the Gemini client and API integration.
+2. Identify the configured Gemini model.
+3. Trace the chatbot request execution path.
+4. Determine whether the Gemini API is called when a question is submitted.
+5. Inspect API request and response logs, where available.
+6. Verify whether the response displayed in the frontend originates from the Gemini API response.
+7. Determine whether a hardcoded response, local model, static answer, or fallback mechanism is being used instead.
+8. Test what happens when the Gemini API is unavailable or returns an error.
+
+### Failure conditions
+
+- Gemini API is never called.
+- API integration exists but is bypassed.
+- Responses are generated from hardcoded content.
+- Gemini is called but its response is discarded.
+- An incorrect API model or endpoint is configured.
+- API authentication fails.
+- The backend does not handle API errors correctly.
+- The chatbot displays a fallback response without identifying the fallback.
+- The frontend displays a response different from the backend-generated response.
+
+**Important:** Do not classify a response as non-Gemini merely because it resembles a textbook answer. Use execution traces, request logs, and code-path verification to establish the actual source.
+
+Never expose API keys or credentials in the report.
+
+## Category G: Multi-Concept and Complex Questions
+
+Test whether SyncScholar can answer questions requiring multiple related concepts.
+
+Examples:
+
+- Explain how force, acceleration, and mass are related using Newton's second law.
+- How are work, force, displacement, and energy connected?
+- Explain how evaporation, temperature, and humidity affect the drying of clothes.
+- How are wavelength, frequency, and speed of sound related?
+
+Test whether the chatbot can combine information from multiple retrieved chunks without mixing unrelated concepts.
+
+## Category H: Context and Follow-Up Questions
+
+Test conversational continuity.
+
+Example conversation:
+
+Student: What is acceleration?
+
+Student: Explain its formula.
+
+Student: Give me one numerical example.
+
+Student: What happens if the acceleration is negative?
+
+Check whether SyncScholar correctly understands follow-up questions and retains the relevant conversation context.
+
+Also test:
+
+- Switching topics.
+- Switching chapters.
+- Referring to previous answers.
+- Asking for clarification.
+- Asking for shorter explanations.
+- Asking for more detailed explanations.
+
+## Category I: Formula and Scientific Notation Tests
+
+Test whether the chatbot correctly interprets and presents:
+
+- Mathematical equations.
+- Chemical formulas.
+- Subscripts.
+- Superscripts.
+- SI units.
+- Scientific notation.
+- Fractions.
+- Greek symbols.
+- Chemical reactions.
+- Equations of motion.
+
+Examples:
+
+- Explain H₂O and CO₂.
+- Write the formula for kinetic energy.
+- Calculate the acceleration using v = u + at.
+- Explain the difference between 10² and 10³.
+- Balance a simple chemical equation.
+
+Check whether the displayed frontend response preserves the correct mathematical notation.
+
+## Category J: Response Quality and Student Understanding
+
+Evaluate every generated response against these criteria:
+
+1. Scientific correctness.
+2. Relevance to the question.
+3. Class 9 suitability.
+4. Conceptual completeness.
+5. Vocabulary difficulty.
+6. Explanation clarity.
+7. Correct use of examples.
+8. Formula accuracy.
+9. Logical presentation.
+10. Absence of hallucinations.
+
+Identify responses that are technically correct but pedagogically unsuitable.
+
+For example, a university-level explanation may be scientifically correct but still be a failure for a Class 9 student if a simpler explanation is expected.
+
+---
+
+# 4. FAILURE-ORIENTED TESTING STRATEGY
+
+Do not restrict testing to predefined questions.
+
+Generate additional test questions dynamically based on the following approaches.
+
+### Approach 1: Same concept, different wording
+
+Ask the same question in 5–10 different ways.
+
+### Approach 2: Different difficulty levels
+
+Test easy, moderate, and challenging Class 9-level questions.
+
+### Approach 3: Numerical variations
+
+Change numerical values, units, missing variables, and calculation requirements.
+
+### Approach 4: Conceptual variations
+
+Ask direct, indirect, hypothetical, and application-based questions.
+
+### Approach 5: Boundary testing
+
+Test questions that are just within or outside the expected Class 9 syllabus.
+
+### Approach 6: Adversarial testing
+
+Use misleading wording, unnecessary information, incorrect assumptions, and ambiguous questions.
+
+Do not expect the chatbot to agree with false assumptions.
+
+For example:
+
+"Since sound can travel through a vacuum, why can't we hear sounds in space?"
+
+Expected behaviour: Correct the false assumption and explain that sound requires a material medium.
+
+### Approach 7: Repeated reproducibility testing
+
+Whenever a failure is discovered:
+
+1. Repeat the exact question.
+2. Check whether the failure occurs again.
+3. Change the wording slightly.
+4. Check whether the same failure occurs.
+5. Change numerical values if applicable.
+6. Determine whether the failure is consistent or intermittent.
+
+Do not count repeated identical failures as separate unique bugs. Group them under one root-cause issue and record the number of occurrences.
+
+### Approach 8: Regression-oriented testing
+
+When one failure is discovered, generate additional questions targeting the same suspected weakness.
+
+For example, if the chatbot fails to convert km/h into m/s, test additional unit-conversion questions from different chapters.
+
+The objective is to discover the full extent of the underlying problem.
+
+---
+
+# 5. ROOT-CAUSE ANALYSIS
+
+Finding an incorrect response is not sufficient.
+
+For every confirmed failure, investigate WHY the chatbot failed.
+
+Classify the root cause into one or more of the following categories:
+
+| Root-cause category | Examples |
+|---|---|
+| PDF extraction | Missing or incorrectly extracted content |
+| Content structuring | Incorrect chapter or topic classification |
+| Chunking | Important concept split across chunks |
+| Embedding | Poor semantic representation |
+| Vector search | Incorrect or irrelevant retrieval |
+| Metadata filtering | Wrong class, subject, or chapter filters |
+| RAG augmentation | Retrieved context not included in prompt |
+| Prompt engineering | Weak or contradictory instructions |
+| Gemini integration | API not called or response mishandled |
+| Reasoning | Incorrect conceptual understanding |
+| Numerical calculation | Formula or arithmetic error |
+| Formula interpretation | Incorrect symbols, units, or equations |
+| Conversation memory | Previous context incorrectly retained or lost |
+| Frontend | Incorrect response rendering |
+| Backend | Request-handling or response-processing error |
+| Performance | Excessive latency or timeout |
+| Configuration | Incorrect environment or model configuration |
+
+### Root-cause investigation procedure
+
+For every failure:
+
+1. Capture the exact question.
+2. Capture the chatbot's complete response.
+3. Establish the expected correct response.
+4. Identify the failure type.
+5. Inspect the backend execution path.
+6. Inspect retrieved chunks if RAG is used.
+7. Inspect the augmented prompt.
+8. Verify Gemini API execution.
+9. Identify the earliest stage where the expected behaviour breaks.
+10. Determine the most likely root cause.
+11. Record supporting evidence.
+12. Suggest what should be investigated or fixed later.
+
+If the root cause cannot be conclusively established, label it as **Suspected Root Cause** and explain what additional evidence is required.
+
+Never invent a root cause based only on the final answer.
+
+---
+
+# 6. TEST EXECUTION AND RESULT TRACKING
+
+Maintain a structured test log.
+
+Every test must contain:
+
+- Test ID.
+- Testing category.
+- NCERT Class 9 Science chapter.
+- Question.
+- Question variation.
+- Expected answer or expected behaviour.
+- Actual chatbot response.
+- Test result.
+- Failure description.
+- Root-cause category.
+- Root-cause explanation.
+- Supporting evidence.
+- Reproducibility status.
+- Severity.
+- Suggested investigation or fix.
+
+Use the following result classifications:
+
+**PASS:** The chatbot behaves correctly.
+
+**FAIL:** The chatbot produces an incorrect, incomplete, irrelevant, or otherwise unacceptable result.
+
+**PARTIAL PASS:** The answer is mostly correct but has identifiable weaknesses.
+
+**BLOCKED:** The test cannot be completed because of an external dependency or unavailable service.
+
+**INCONCLUSIVE:** Available evidence is insufficient to determine whether the chatbot passed or failed.
+
+Do not mark an unverified test as PASS.
+
+---
+
+# 7. PRIORITY AND SEVERITY CLASSIFICATION
+
+Classify discovered problems using four severity levels.
+
+**CRITICAL**
+- Gemini integration completely broken.
+- Chatbot consistently unable to generate responses.
+- Major scientific misinformation.
+- Wrong class or subject knowledge being served systematically.
+- Critical data or API security exposure.
+
+**HIGH**
+- Incorrect numerical answers.
+- Incorrect scientific formulas.
+- Consistent RAG retrieval failures.
+- Major conceptual inaccuracies.
+- Gemini API responses being incorrectly discarded.
+
+**MEDIUM**
+- Incomplete explanations.
+- Incorrect or inconsistent examples.
+- Poor question interpretation.
+- Weak handling of follow-up questions.
+- Incorrect formula formatting.
+
+**LOW**
+- Minor vocabulary problems.
+- Small formatting issues.
+- Minor response-structure inconsistencies.
+- Unnecessary verbosity.
+
+Prioritize failures based on their actual impact on students, not simply how frequently they occur.
+
+---
+
+# 8. MANDATORY OUTPUT: FAILURE_REPORT.txt
+
+Create a plain-text file named:
+
+FAILURE_REPORT.txt
+
+This file must contain all discovered issues and their investigation details.
+
+Use the following structure:
+
+==================================================
+SYNCSCHOLAR CHATBOT - FAILURE AND ROOT CAUSE REPORT
+==================================================
+
+PROJECT: SyncScholar
+
+TESTING SCOPE: NCERT CLASS 9 SCIENCE ONLY
+
+TEST TYPE: Red-Team Testing / Functional QA / RAG Evaluation
+
+DATE: [Current date]
+
+--------------------------------------------------
+SECTION 1: EXECUTIVE SUMMARY
+--------------------------------------------------
+
+Total test cases executed:
+Passed:
+Failed:
+Partial passes:
+Blocked:
+Inconclusive:
+
+Total unique bugs identified:
+
+Critical:
+High:
+Medium:
+Low:
+
+Gemini API integration status:
+
+RAG implementation status:
+
+Overall observations:
+
+--------------------------------------------------
+SECTION 2: INDIVIDUAL BUG REPORTS
+--------------------------------------------------
+
+BUG ID: SS-001
+
+TITLE:
+[Short description]
+
+CATEGORY:
+[Numerical / Theoretical / RAG / Gemini / etc.]
+
+CHAPTER:
+[NCERT Class 9 Science chapter]
+
+SEVERITY:
+[Critical / High / Medium / Low]
+
+TEST QUESTION:
+[Exact question submitted]
+
+QUESTION VARIATION:
+[How the question was modified]
+
+EXPECTED BEHAVIOUR:
+[Correct answer or expected chatbot behaviour]
+
+ACTUAL CHATBOT RESPONSE:
+[Complete actual response]
+
+FAILURE DESCRIPTION:
+[What went wrong]
+
+ROOT CAUSE:
+[Confirmed or suspected root cause]
+
+ROOT-CAUSE CATEGORY:
+[Chunking / Embedding / Retrieval / Gemini / Prompt / etc.]
+
+SUPPORTING EVIDENCE:
+[Logs, retrieved chunks, API traces, code references, etc.]
+
+REPRODUCIBILITY:
+[Reproduced / Intermittent / Not reproduced]
+
+OCCURRENCES:
+[Number of observed occurrences]
+
+RECOMMENDED INVESTIGATION:
+[What developers should inspect or change later]
+
+--------------------------------------------------
+SECTION 3: GEMINI API INTEGRATION AUDIT
+--------------------------------------------------
+
+Document:
+
+- Whether Gemini API is actually called.
+- Configured model and integration method.
+- Whether generated responses originate from Gemini.
+- API errors.
+- Fallback behaviour.
+- Missing integration components.
+- Supporting runtime evidence.
+
+--------------------------------------------------
+SECTION 4: RAG PIPELINE AUDIT
+--------------------------------------------------
+
+Document:
+
+- PDF extraction issues.
+- Content structuring issues.
+- Chunking problems.
+- Embedding problems.
+- Vector indexing problems.
+- Retrieval problems.
+- Metadata filtering problems.
+- Context augmentation problems.
+- Missing or incorrect retrieved information.
+
+--------------------------------------------------
+SECTION 5: NUMERICAL PROBLEM-SOLVING FAILURES
+--------------------------------------------------
+
+List all incorrect numerical solutions, including:
+
+- Question.
+- Expected calculation.
+- Actual calculation.
+- Incorrect formula, if applicable.
+- Arithmetic or unit-conversion error.
+- Root cause.
+
+--------------------------------------------------
+SECTION 6: THEORETICAL EXPLANATION FAILURES
+--------------------------------------------------
+
+List all cases involving:
+
+- Scientifically incorrect explanations.
+- Incomplete explanations.
+- Unnecessary complexity.
+- Incorrect terminology.
+- Missing examples.
+- Failure to answer the actual question.
+
+--------------------------------------------------
+SECTION 7: RECURRING ROOT CAUSES
+--------------------------------------------------
+
+Identify common underlying problems responsible for multiple failures.
+
+Group related bugs together.
+
+For each recurring issue, provide:
+
+- Root cause.
+- Number of affected tests.
+- Related bug IDs.
+- Impact.
+- Evidence.
+
+--------------------------------------------------
+SECTION 8: RECOMMENDED FIX PRIORITIES
+--------------------------------------------------
+
+List the problems in order of engineering priority.
+
+Do not implement any fixes during this testing phase.
+
+--------------------------------------------------
+SECTION 9: FINAL TESTING CONCLUSION
+--------------------------------------------------
+
+Summarize:
+
+- Major weaknesses discovered.
+- Most frequently failing components.
+- Whether Gemini integration is verified.
+- Whether RAG is working correctly.
+- Numerical reliability.
+- Theoretical answer quality.
+- Areas requiring immediate developer attention.
+
+==================================================
+END OF REPORT
+==================================================
+
+---
+
+# 9. TESTING RULES AND RESTRICTIONS
+
+1. Testing must be limited to NCERT Class 9 Science.
+2. Test across all available Class 9 Science chapters, not just Chapter 1.
+3. If some chapters are missing from the database, document the missing coverage.
+4. Do not modify application source code.
+5. Do not fix any identified issues.
+6. Do not change the Gemini model or API configuration.
+7. Do not modify MongoDB records or vector indexes.
+8. Do not expose API keys, passwords, or credentials.
+9. Do not use fabricated chatbot responses.
+10. Capture actual responses from the running SyncScholar application.
+11. Maintain evidence for every confirmed failure.
+12. Distinguish confirmed root causes from suspected root causes.
+13. Do not report scientifically correct responses as failures simply because their wording differs from an expected answer.
+14. Evaluate answers according to Class 9 educational requirements.
+15. Test variations rather than relying on a small fixed question set.
+16. Avoid unnecessary repeated API calls when testing the same behaviour.
+17. Respect API rate limits and avoid excessive load testing.
+18. Do not delete, overwrite, or damage existing project data.
+19. Do not stop testing after discovering the first few bugs.
+20. Continue testing until the planned test coverage is complete or a genuine external blocker prevents further execution.
+
+---
+
+# 10. FINAL EXECUTION INSTRUCTIONS
+
+Start by inspecting the complete SyncScholar project and identifying its actual architecture.
+
+Then:
+
+**Phase 1:** Understand the application and its dependencies.
+
+**Phase 2:** Identify the available Class 9 Science chapters and stored educational content.
+
+**Phase 3:** Design a comprehensive test suite covering all the categories above.
+
+**Phase 4:** Execute the questions against the actual running chatbot.
+
+**Phase 5:** Capture and evaluate every response.
+
+**Phase 6:** Investigate the RAG pipeline and Gemini API integration.
+
+**Phase 7:** Reproduce failures using different question variations.
+
+**Phase 8:** Perform root-cause analysis and classify bugs.
+
+**Phase 9:** Generate the FAILURE_REPORT.txt file.
+
+**Phase 10:** Verify that the report exists and contains all discovered issues.
+
+## Final instruction
+
+Your objective is not to prove that SyncScholar works.
+
+Your objective is to discover where, how, and why SyncScholar fails.
+
+Be persistent, systematic, evidence-driven, and critical.
+
+Keep testing different questions, variations, chapters, and difficulty levels until you have thoroughly evaluated the Class 9 Science chatbot.
+
+**Do not fix anything. Only test, investigate, document, and report.**

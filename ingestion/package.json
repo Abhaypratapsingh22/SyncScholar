@@ -7,6 +7,8 @@
   "scripts": {
     "seed": "node scripts/seed_sample_chunks.js",
     "ingest": "node scripts/ingest_curriculum.js",
+    "ingest-science": "node scripts/ingest_txt_curriculum.js",
+    "ingest-science:dry-run": "node scripts/ingest_txt_curriculum.js --dry-run",
     "dry-run": "node scripts/ingest_curriculum.js --dry-run",
     "verify": "node scripts/verify_curriculum_chunks.js"
   },

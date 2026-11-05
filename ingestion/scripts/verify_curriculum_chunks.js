@@ -79,23 +79,29 @@ async function verify() {
       }
     }
 
+    const validPct = totalCount > 0 ? ((validVectors / totalCount) * 100).toFixed(1) : '0.0';
     console.log(`\n🧠 Vector Dimensionality Verification:`);
-    console.log(`   - Valid 768-float vectors: ${validVectors}/${totalCount} (100%)`);
+    console.log(`   - Valid 768-float vectors: ${validVectors}/${totalCount} (${validPct}%)`);
     console.log(`   - Anomalies / Mismatches: ${invalidVectors}`);
 
     // Print Sample Document
     const sample = await collection.findOne();
     console.log('\n📄 Sample Stored Document:');
     console.log(JSON.stringify({
-      _id: sample._id,
-      chunk_id: sample.chunk_id,
-      text_preview: sample.text.slice(0, 140) + '...',
-      embedding_length: sample.embedding?.length,
-      embedding_sample: sample.embedding?.slice(0, 4),
-      metadata: sample.metadata
+      _id: sample?._id,
+      chunk_id: sample?.chunk_id,
+      text_preview: sample?.text?.slice(0, 140) + '...',
+      embedding_length: sample?.embedding?.length,
+      embedding_sample: sample?.embedding?.slice(0, 4),
+      metadata: sample?.metadata
     }, null, 2));
 
-    console.log('\n✅ All checks passed! Ready for Atlas Vector Search queries.');
+    if (invalidVectors > 0) {
+      console.error(`\n❌ Verification failed: ${invalidVectors} anomalous vector(s) detected.`);
+      process.exitCode = 1;
+    } else {
+      console.log('\n✅ All checks passed! Ready for Atlas Vector Search queries.');
+    }
   } finally {
     await client.close();
   }

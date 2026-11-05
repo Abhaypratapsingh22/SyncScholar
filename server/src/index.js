@@ -40,6 +40,11 @@ async function bootstrap() {
 
   process.on('uncaughtException', (error) => {
     console.error('Uncaught Exception thrown:', error);
+    const forceExitTimeout = setTimeout(() => {
+      console.error('Forced shutdown due to delayed server.close.');
+      process.exit(1);
+    }, 5000);
+    forceExitTimeout.unref();
     server.close(() => process.exit(1));
   });
 }

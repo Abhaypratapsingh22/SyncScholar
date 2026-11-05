@@ -4,6 +4,13 @@
  * Implements connection pooling, lifecycle event logging, and graceful process shutdown.
  */
 
+import dns from 'dns';
+try {
+  // Prioritize IPv4 over IPv6 on Windows to prevent SRV resolution timeouts
+  dns.setDefaultResultOrder('ipv4first');
+} catch {
+  // Ignore if custom DNS ordering cannot be configured
+}
 import mongoose from 'mongoose';
 import { env } from './env.js';
 
@@ -58,11 +65,10 @@ export async function connectDB(customUri) {
 
   // Connection options optimized for Atlas cloud clusters and low-latency API handling
   const options = {
-    maxPoolSize: 10,              // Keep up to 10 concurrent connections in pool
-    minPoolSize: 2,               // Keep minimum 2 warm connections ready
-    serverSelectionTimeoutMS: 5000, // Timeout fast after 5s if cluster is unreachable
-    socketTimeoutMS: 45000,       // Close idle sockets after 45 seconds
-    heartbeatFrequencyMS: 10000,  // Periodic health ping to Atlas every 10s
+    maxPoolSize: 10,               // Keep up to 10 concurrent connections in pool
+    serverSelectionTimeoutMS: 15000, // Resilient timeout for cellular / rural classroom connections
+    socketTimeoutMS: 45000,        // Close idle sockets after 45 seconds
+    heartbeatFrequencyMS: 10000,   // Periodic health ping to Atlas every 10s
   };
 
   try {

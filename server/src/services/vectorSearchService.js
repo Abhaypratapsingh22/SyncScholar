@@ -20,8 +20,36 @@ const ATLAS_SEARCH_INDEX = 'vector_index';
 const NUM_CANDIDATES = 40;
 const SEARCH_LIMIT = 4;
 // Atlas Vector Search normalizes cosine similarity to (1 + cos) / 2.
-// Unrelated passages score ~0.70-0.74, while aligned curriculum queries score >0.80.
-const MIN_RELEVANCE_THRESHOLD = 0.78;
+// Unrelated passages score ~0.65-0.70, while aligned curriculum queries score >0.72.
+// Calibrated from 0.78 to 0.72 to prevent false out-of-syllabus refusals on casual wording (BUG SS-003).
+const MIN_RELEVANCE_THRESHOLD = 0.72;
+
+/**
+ * Normalizes colloquial student queries by stripping conversational filler words,
+ * greetings, and slang before generating vector embeddings.
+ * Preserves the underlying scientific intent (e.g. "yo bro why does ice float on water man" -> "why does ice float on water").
+ *
+ * @param {string} query - Raw student query
+ * @returns {string} Cleaned query string for semantic embedding
+ */
+export function cleanSearchQuery(query) {
+  if (!query || typeof query !== 'string') return '';
+  let cleaned = query.trim();
+
+  // Strip conversational slang, greeting, and filler prefixes (requiring word boundary):
+  cleaned = cleaned.replace(
+    /^(?:yo\s+bro|yo|hey\s+bro|hey|hi|hello|plz|pls|please|can\s+you\s+(?:please\s+)?tell\s+me|tell\s+me|bro|dude)\b\s*[,:]*\s*/i,
+    ''
+  );
+
+  // Strip conversational suffixes (requiring preceding whitespace or punctuation):
+  cleaned = cleaned.replace(
+    /(?:[\s,;:.!?]+)\b(?:yo\s+bro|yo|bro|man|dude|plz|pls|please)\s*[?!.]*$/i,
+    ''
+  );
+
+  return cleaned.trim() || query.trim();
+}
 
 /**
  * Generates 768-dimensional float embedding for a query with exponential backoff on HTTP 429.
@@ -103,7 +131,9 @@ export async function retrieveRelevantChunks({
   }
 
   // 1. Generate 768-dimensional query embedding via gemini-embedding-001
-  const queryVector = await embedQueryWithRetry(query.trim());
+  // Clean colloquial filler / slang words so vector embedding focuses on educational intent (BUG SS-003)
+  const queryToEmbed = cleanSearchQuery(query);
+  const queryVector = await embedQueryWithRetry(queryToEmbed);
 
   // 2. Execute Atlas $vectorSearch pipeline with adaptive pre-filter
   const pipeline = [

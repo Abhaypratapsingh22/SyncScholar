@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" fill="none">
+  <rect width="512" height="512" rx="96" fill="#026bc7"/>
+  <rect x="32" y="32" width="448" height="448" rx="72" fill="#ffffff" fill-opacity="0.08"/>
+  <!-- Open Textbook Pages -->
+  <path d="M120 370V170c0-18 14-32 32-32h88c16 0 22 10 22 22v210c-14-11-32-16-54-16h-56c-12 0-22 7-32 16z" fill="#ffffff"/>
+  <path d="M392 370V170c0-18-14-32-32-32h-88c-16 0-22 10-22 22v210c14-11 32-16 54-16h56c12 0 22 7 32 16z" fill="#f0f7ff"/>
+  <!-- Central Spine Accent -->
+  <line x1="256" y1="160" x2="256" y2="380" stroke="#026bc7" stroke-width="8" stroke-linecap="round"/>
+  <!-- Sync Dynamic Loop -->
+  <path d="M256 128a64 64 0 1 0 53 28.5" stroke="#38bdf8" stroke-width="14" stroke-linecap="round"/>
+  <polyline points="314 134 308 160 282 154" stroke="#38bdf8" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Educational SDG 4 Quality Education Badge -->
+  <circle cx="376" cy="136" r="38" fill="#059669"/>
+  <text x="376" y="148" text-anchor="middle" font-size="30" font-weight="900" fill="#ffffff" font-family="system-ui, -apple-system, sans-serif">SDG4</text>
+</svg>
