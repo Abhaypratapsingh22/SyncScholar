@@ -2,8 +2,11 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
+const basePath = '/SyncScholar/';
+
 // https://vitejs.dev/config/
 export default defineConfig({
+  base: basePath,
   plugins: [
     react(),
     VitePWA({
@@ -18,16 +21,16 @@ export default defineConfig({
         background_color: '#f8fafc',
         display: 'standalone',
         orientation: 'portrait-primary',
-        start_url: '/',
+        start_url: basePath,
         icons: [
           {
-            src: '/pwa-192x192.svg',
+            src: `${basePath}pwa-192x192.svg`,
             sizes: '192x192',
             type: 'image/svg+xml',
             purpose: 'any maskable',
           },
           {
-            src: '/pwa-512x512.svg',
+            src: `${basePath}pwa-512x512.svg`,
             sizes: '512x512',
             type: 'image/svg+xml',
             purpose: 'any maskable',
@@ -37,7 +40,7 @@ export default defineConfig({
       workbox: {
         // Pre-cache static application shell: HTML, JS, CSS, and SVG icons
         globPatterns: ['**/*.{js,css,html,svg,ico,woff2}'],
-        navigateFallback: '/index.html',
+        navigateFallback: `${basePath}index.html`,
         navigateFallbackDenylist: [/^\/api/],
         runtimeCaching: [
           {
