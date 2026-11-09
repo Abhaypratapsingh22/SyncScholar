@@ -122,6 +122,10 @@ async function request(endpoint, options = {}, timeoutMs = 20000) {
 }
 
 export const api = {
+  async checkHealth() {
+    return await request('/health', { method: 'GET' }, 3500);
+  },
+
   // Authentication
   async login(credentials) {
     const res = await request('/auth/login', {
