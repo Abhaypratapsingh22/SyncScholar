@@ -40,7 +40,7 @@ coverage/
 # (Mandate: Zero Raw PDFs committed to git - offline pipeline only)
 ingestion/raw_pdfs/*.pdf
 ingestion/raw_pdfs/**/*.pdf
-*.pdf
+
 
 # Editor & OS artifacts
 .vscode/*
