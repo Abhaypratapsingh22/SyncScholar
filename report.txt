@@ -1,0 +1,373 @@
+SYNCSCHOLAR PROJECT BRIEF FOR CLAUDE
+===================================
+
+PURPOSE OF THIS FILE
+--------------------
+Use this repository brief as source material to write a clear, professional
+project report about SyncScholar. Treat the repository as the source of truth.
+Distinguish implemented code from aspirations in AGENTS.md, architecture notes,
+and prompt templates. Do not claim that the project is deployed, production
+validated, or that every documented feature works end to end unless that is
+independently verified.
+
+Suggested report audience: academic evaluators, project reviewers, educators,
+and software developers. Explain the educational problem, goals, system design,
+user workflows, technology, current scope, limitations, and future work in
+plain language. Use the report structure suggested at the end of this file.
+
+
+1. PROJECT SUMMARY
+------------------
+SyncScholar is an educational tutoring and formative-practice web application
+for students in low-bandwidth or intermittently connected classrooms. Its goal
+is to make curriculum-focused help and practice more accessible, especially in
+underserved and multi-grade settings. The project aligns its stated mission
+with UN Sustainable Development Goal 4 (Quality Education).
+
+The current application is organized as a monorepo with three main technical
+parts:
+
+* A React/Vite student-facing web app with Progressive Web App (PWA) support.
+* A Node.js/Express API using MongoDB Atlas and Gemini AI services.
+* A separate Node.js curriculum-ingestion workspace that prepares textbook
+  chunks, creates embeddings, and writes them to MongoDB.
+
+The codebase contains a substantial student learning workflow: a curriculum
+question-and-answer view, practice quizzes and flashcards, student sign-in and
+local classroom mode, a mastery summary, cached learning materials, and a
+local queue for quiz attempts. The backend also has teacher analytics APIs.
+However, there is no teacher dashboard UI in the current React app.
+
+
+2. EDUCATIONAL PROBLEM AND GOALS
+-------------------------------
+The project addresses barriers faced by students who may have:
+
+* Unreliable or expensive internet access.
+* Limited access to individual tutoring.
+* Different grade levels in the same classroom.
+* A need for help that follows their assigned textbook and course level.
+* A need for teachers to identify common learning gaps efficiently.
+
+The intended teaching approach is supportive and Socratic: give a student
+conceptual guidance, explanations, examples, and a next-step question rather
+than simply functioning as an answer key. Textbook citations are intended to
+help students and teachers trace explanations back to source material.
+
+
+3. USERS AND INTERFACES
+-----------------------
+Student experience (implemented in the frontend):
+
+* Curriculum Doubt Tutor: subject and grade selectors, chat-style questions,
+  suggested questions, responses, follow-up prompts, and citation cards.
+* Practice Quiz & Flashcards: topic selection, multiple-choice practice,
+  explanations, a score, flashcard review, and local caching.
+* Student mastery modal: requests a cloud profile and displays concept scores,
+  progress/status, recent quiz activity, and remediation indicators when data
+  is available.
+* Authentication options: Clerk sign-in/sign-up when configured, school
+  roll-number login through the API, and local offline classroom guest mode.
+* Persistent connectivity/sync status in the header, with an action to trigger
+  synchronization when attempts are queued.
+
+Teacher experience (backend only at present):
+
+* The Express API offers teacher overview, classroom weak-spot heatmap, and
+  struggling-student drill-down endpoints.
+* These endpoints require teacher/admin roles and restrict results to school
+  and assigned-grade context.
+* No teacher page, dashboard component, or frontend navigation for these APIs
+  was found in the current client source.
+
+The UI uses React components, Tailwind CSS, Lucide icons, high-contrast cards,
+focus styles, responsive layouts, and minimum-touch-target styling.
+
+
+4. APPLICATION ARCHITECTURE
+---------------------------
+Frontend: client/
+
+* Vite and React 18 provide the browser application.
+* Tailwind CSS provides styles.
+* vite-plugin-pwa/Workbox registers a service worker, precaches the application
+  shell and SVG assets, and uses a network-only rule for API health checks.
+* Dexie.js wraps IndexedDB for locally cached flashcards, quizzes, tutor
+  history, the current student session, and pending quiz submissions.
+* client/src/services/api.js wraps fetch calls with timeout handling, auth
+  headers, and network error messages.
+* client/src/services/syncService.js monitors browser connectivity and backend
+  health and uploads queued attempts in batches.
+
+Backend: server/
+
+* Express provides the REST API and middleware.
+* Mongoose defines users, textbook chunks, and quiz attempts.
+* MongoDB Atlas is the system of record for users, curriculum chunks, and quiz
+  attempts.
+* Google’s @google/genai SDK is used for text embeddings and generated tutor
+  and assessment responses.
+* Authentication supports local JWTs and Clerk token verification, with role
+  authorization middleware.
+* Source is divided into config, controllers, routes, services, models,
+  middleware, and utilities.
+
+Curriculum ingestion: ingestion/
+
+* This workspace is a separate Node.js package, not the Python pipeline
+  described in some project guidance.
+* Scripts extract or process textbook content, divide it into educational
+  chunks, attach curriculum metadata, create 768-dimensional Gemini embeddings,
+  and upsert documents into MongoDB Atlas.
+* Scripts include PDF ingestion, extracted-text ingestion, sample seeding,
+  supplementary seeding, and database/vector verification.
+* Raw PDF files are excluded from Git. The repository includes an extracted
+  Class 9 Science text file, sample metadata, and ingestion scripts.
+
+Data/index documentation: docs/
+
+* Architecture notes describe collections, vector retrieval, mastery tracking,
+  offline synchronization, and teacher analytics.
+* Atlas vector index definitions specify a 768-dimensional cosine vector index
+  and metadata pre-filter fields.
+
+Prompt templates: Prompt/
+
+* These are implementation instructions and design history for features such
+  as adaptive RAG, authentication, ingestion, offline PWA, student UI,
+  flashcards, and teacher analytics. They are not themselves proof that every
+  proposed capability is complete.
+
+
+5. IMPORTANT DATA MODELS
+------------------------
+MongoDB collection "users" (server/src/models/User.js):
+
+* Student, teacher, and admin roles.
+* Email, school roll number, or Clerk identity; school and grade fields.
+* Teacher-assigned grades and preferred language.
+* A concept_mastery array keyed by learning objective, with mastery score,
+  number of attempts, status, and last-reviewed date.
+
+MongoDB collection "curriculum_chunks"
+(server/src/models/CurriculumChunk.js):
+
+* Text passage and 768-number embedding.
+* Metadata: source curriculum, grade, subject, chapter, learning objective,
+  difficulty tier, page, and official source URL.
+* Atlas Vector Search index: vector field "embedding", cosine similarity, and
+  filters for grade, subject, learning objective, and difficulty.
+
+MongoDB collection "quiz_attempts" (server/src/models/QuizAttempt.js):
+
+* Student and client-generated attempt ID.
+* Objective, subject, grade, evaluated question answers, score, maximum score,
+  misconception tags, and whether the attempt was synced from offline storage.
+* A unique compound student/attempt ID index supports deduplication.
+
+
+6. KEY USER AND DATA FLOWS
+--------------------------
+Tutor question flow:
+
+1. The student submits a question, subject, grade, and recent conversation
+   turns from the Tutor view.
+2. The API validates the request and identifies the student context.
+3. The adaptive filter uses the student’s mastery data and grade/subject to
+   build a MongoDB Vector Search pre-filter.
+4. At mastery below 0.50, the current implementation expands the grade filter
+   to include the immediately preceding grade and the current grade.
+5. Gemini generates a query embedding using gemini-embedding-001 at 768
+   dimensions; Atlas searches the curriculum chunks.
+6. A relevance threshold can refuse a query without calling the answer model.
+   Otherwise, retrieved textbook passages and conversation context are sent to
+   a Gemini text model with instructions for a grade-appropriate Socratic
+   response.
+7. Responses include a follow-up question and citation metadata. The frontend
+   formats mathematical notation and caches tutor exchanges for later reading.
+
+Quiz and mastery flow:
+
+1. The API retrieves curriculum chunks and requests three diagnostic multiple
+   choice questions and three flashcards in JSON.
+2. The backend sanitizes the generated assessment and returns it with source
+   references.
+3. The student answers questions. The browser calculates immediate score and
+   writes the attempt to Dexie before attempting the network submission.
+4. If online, the frontend submits promptly. If that request fails or the
+   student is offline, the pending item remains in IndexedDB for retry.
+5. The backend records a quiz attempt using a client-generated ID, evaluates
+   answers, tracks incorrect concept tags, and updates mastery with an
+   exponential moving average (EMA).
+6. The current EMA alpha is 0.4; new mastery below 0.50 needs prerequisite
+   remediation, 0.50–0.79 is progressing, and 0.80 or above is mastered.
+7. The sync service batches pending attempts (up to 50 at a time), filters them
+   to the active student, and retries when connectivity returns. The server
+   checks the attempt ID to avoid re-scoring a duplicate.
+
+Teacher analytics flow:
+
+* Teacher endpoints aggregate student mastery by learning objective and grade,
+  calculate average mastery and struggling counts, and look up quiz
+  misconception tags. A separate endpoint returns students below the 0.50
+  mastery threshold for an objective.
+
+
+7. CURRENT CURRICULUM AND AI IMPLEMENTATION
+-------------------------------------------
+* Runtime embedding code uses Gemini gemini-embedding-001 with 768 dimensions.
+* Tutor and assessment generation use configurable Gemini model names with
+  fallback model names.
+* Tutor retrieval uses Atlas Vector Search index "vector_index", grade/subject
+  pre-filtering, a relevance threshold currently set to 0.72, and a small
+  retrieval limit.
+* Assessment retrieval first tries an exact learning-objective match, then
+  vector retrieval, then grade/subject chunks.
+* Prompt instructions emphasize textbook grounding, Socratic explanations,
+  grade-appropriate language, and structured JSON.
+* Existing seed examples and offline fallback decks focus mainly on Class 7
+  Science Heat and Class 9 Science Sound. The extracted text pipeline covers
+  NCERT Class 9 Science chapter material; supplementary seed content includes
+  some Class 8 and legacy Class 9 topics. A manifest also references Class 9
+  Mathematics PDFs, but their presence or ingestion into a live database has
+  not been verified from the repository alone.
+
+
+8. OFFLINE AND LOW-CONNECTIVITY DESIGN
+--------------------------------------
+Offline support has several distinct layers:
+
+* The PWA service worker caches the frontend application shell and static
+  assets so the application can load offline after initial access.
+* Dexie/IndexedDB stores locally cached quizzes, flashcards, tutor history,
+  student session information, and unsynced attempts.
+* The UI signals online, offline, pending, and syncing states.
+* Two starter assessment decks and several hardcoded tutor-answer patterns
+  provide limited local practice/help without a live RAG request.
+* A periodic backend health check supplements browser online/offline events.
+* Pending quiz attempts are retried by the application sync service after
+  network recovery.
+
+Be precise: offline mode does not imply live LLM tutoring or full curriculum
+retrieval without the server/database. The currently embedded fallback content
+is limited, and full offline coverage depends on previously cached data.
+
+
+9. API SURFACE
+--------------
+The Express server mounts these route groups:
+
+* /api/auth: registration, login, and current-user lookup.
+* /api/student: profile/mastery and grade update.
+* /api/tutor: curriculum tutor question.
+* /api/assessments: generate, submit, batch-sync, and quiz history.
+* /api/teacher: classroom overview, heatmap, and objective student drill-down.
+* /api/health: server and MongoDB connection status.
+
+API payloads are JSON. The client uses VITE_API_BASE_URL or the "/api" default.
+During Vite development, "/api" is proxied to localhost:5000.
+
+
+10. DEVELOPER SETUP AND VERIFICATION CONTEXT
+--------------------------------------------
+There are separate package manifests and lockfiles under client/, server/, and
+ingestion/; there is no root package manifest. Environment templates are
+provided for each workspace. The server expects MongoDB URI, Gemini API key,
+and JWT secret; Clerk keys are optional/configuration-dependent. Never include
+actual credentials in a report.
+
+Useful scripts:
+
+* client: npm run dev, npm run build, npm run preview.
+* server: npm run dev, npm start.
+* ingestion: npm run seed, npm run ingest, npm run ingest-science,
+  npm run dry-run, npm run verify.
+
+The server package's "test" script is currently a placeholder that exits with
+an error. Separate verification scripts exist under server/scripts and
+ingestion/scripts; many require a configured MongoDB database and/or external
+Gemini credentials. Do not state that tests or a production deployment passed
+unless they are run and their results are available.
+
+
+11. SCOPE CAVEATS AND ITEMS TO VERIFY IN THE FINAL REPORT
+--------------------------------------------------------
+These are observations from source review, not a full runtime test:
+
+1. Assessment response shape:
+   server/src/services/assessmentService.js returns "diagnostic_mcqs" and
+   "study_flashcards". client/src/components/AssessmentView.jsx reads
+   response.data.questions and response.data.flashcards. Check for an adapter
+   or confirm/fix this integration before claiming that freshly generated
+   online quizzes and flashcards populate correctly.
+
+2. Teacher UI:
+   Teacher analytics endpoints and role checks exist in the backend, but the
+   React app currently exposes student-facing tutor, practice, login, and
+   mastery views rather than a teacher dashboard.
+
+3. Readability:
+   Prompts ask for grade-appropriate wording, and text formatting improves
+   display of formulas. No active Flesch-Kincaid scoring implementation was
+   found in the current source; do not state that reading level is measured
+   unless further code is located.
+
+4. Prerequisite scope:
+   The documented design describes a prerequisite graph. The current adaptive
+   filter source expands to the immediately previous grade plus the current
+   grade when mastery is below 0.50; it does not visibly traverse a graph of
+   prerequisite learning objectives.
+
+5. Curriculum availability:
+   Repository scripts and samples show intended curriculum coverage, but they
+   do not establish which chunks are currently present in a live Atlas
+   database. Avoid claims about live chunk counts or complete coverage.
+
+6. Ingestion implementation:
+   The actual ingestion package and scripts are JavaScript/Node.js, while some
+   architecture guidance describes Python. Describe the code as implemented
+   (Node.js) and mention this documentation inconsistency only if useful.
+
+7. Atlas database naming:
+   The runtime and most ingestion defaults use "syncscholar"; docs/atlas_vector_index.json
+   names "edubridge" as its target database while suggesting syncscholar as an
+   alternative. Clarify the intended deployment database if deployment details
+   are included.
+
+8. Historical QA:
+   FAILURE_REPORT.txt is dated 2026-11-02 and reports an NCERT Class 9 Science
+   evaluation with 70 cases and 11 bugs. It describes an earlier state:
+   for example, it reports a 0.78 threshold and missing conversation history,
+   while current source shows a 0.72 threshold and conversation history
+   handling. Treat that document as historical testing context, not as proof
+   that its findings or metrics still describe the current code.
+
+9. Operational status:
+   This review did not connect to MongoDB Atlas or Gemini, run the application,
+   or execute automated tests. No deployment configuration proving a hosted
+   production instance was reviewed.
+
+
+12. SUGGESTED REPORT OUTLINE FOR CLAUDE
+---------------------------------------
+Write the final project report with these sections:
+
+1. Title and executive summary.
+2. Background, educational problem, and target users.
+3. Project objectives and key user features.
+4. System architecture and technology stack.
+5. Data design and textbook ingestion process.
+6. AI/RAG tutor workflow and curriculum-grounding approach.
+7. Assessment, flashcard, and mastery workflow.
+8. Offline-first/PWA strategy and synchronization lifecycle.
+9. Teacher analytics capabilities and current UI status.
+10. Setup, configuration, and available verification scripts.
+11. Current implementation scope, limitations, and integration items to verify.
+12. Conclusion and practical future improvements.
+
+Use careful language such as "designed to", "the source code implements", and
+"the repository documents" to distinguish intent, implementation, and runtime
+verification. Do not invent user counts, classroom outcomes, accuracy rates,
+deployment details, live database statistics, or test results. Any claims
+drawn from FAILURE_REPORT.txt should be explicitly labeled as historical and
+limited to its stated NCERT Class 9 Science test scope.

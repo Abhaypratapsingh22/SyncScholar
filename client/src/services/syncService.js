@@ -2,7 +2,7 @@
  * @file syncService.js
  * @description Background offline synchronization orchestrator for SyncScholar.
  * 
- * Automatically monitors network connectivity via browser events and /api/health pings,
+ * Automatically monitors network connectivity via browser events and backend health checks,
  * syncing queued offline quiz attempts from Dexie.js IndexedDB to the server upon reconnection.
  */
 
@@ -35,6 +35,8 @@ class SyncService {
       this.heartbeatTimer = setInterval(() => {
         this.verifyServerReachability();
       }, 25000);
+
+      this.verifyServerReachability();
     }
   }
 
@@ -118,16 +120,8 @@ class SyncService {
     }
 
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3500);
-      const res = await fetch('/api/health', {
-        method: 'GET',
-        cache: 'no-store',
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-
-      const reachable = res.ok;
+      await api.checkHealth();
+      const reachable = true;
       if (reachable !== this.isOnline) {
         this.isOnline = reachable;
         this.notify();
